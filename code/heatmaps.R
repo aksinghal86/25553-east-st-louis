@@ -18,6 +18,9 @@ totals %>% group_by(analyte) %>% count
 # Ideally, this can be done using marmap to get bathymetric grids but I'm unable to do this on my computer. 
 # For some reason, there appears to be a conflict between rgdal, raster, and marmap packages
 r <- rast(sfdf, ncol = 1000, nrow = 1000)
+
+# This raster is for the whole city but it is a far bigger area than that sampled. 
+# r <- rast(nrows = 100, ncols = 100, xmin = -90.18666, ymin = 38.57875, xmax = -90.04169, ymax = 38.64267)
 names(r) <- 'log.result'
 
 # Create variogram for each analyte group and fit the variogram
@@ -59,7 +62,8 @@ print(end-start)
 # East St. Louis boundaries from TIGRIS shape files
 esl <- tigris::places('Illinois') %>%
   tigris::filter_place('East St. Louis') %>% 
-  rmapshaper::ms_dissolve()
+  rmapshaper::ms_dissolve() %>% 
+  sf::st_transform('EPSG:4326')
   
 vmods2 <- vmods %>% 
   mutate(
