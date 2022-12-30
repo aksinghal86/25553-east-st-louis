@@ -57,6 +57,15 @@ server <- function(input, output, session) {
     }
   })
   
+  heatmaps <- reactive({
+    req(input$mmapAnalyteGroup)
+    
+    heatmap_rasters <- terra::rast(paste0('data/rasters/', input$mapAnalyteGroup, '.tif'))
+    heatmaps <- sf::st_as_sf(terra::as.polygons(heatmap_rasters, na.rm = T)) 
+    heatmaps
+  }) %>% 
+    bindCache(input$mapAnalyteGroup)
+  
   observe({ 
     req(input$mapAnalyteGroup) 
     
@@ -71,11 +80,10 @@ server <- function(input, output, session) {
                               input$mapAnalyteGroup, ': ', round(est_conc), ' ppb', '<br>',
                               'Rank: ', rank))
     
-    heatmap_rasters <- terra::rast(paste0('data/rasters/', input$mapAnalyteGroup, '.tif'))
-    heatmaps <- sf::st_as_sf(terra::as.polygons(heatmap_rasters, na.rm = T)) 
-    heatmaps$fillby <- if (input$logtransform) heatmaps$log.result.pred else exp(heatmaps$log.result.pred)
     
-    pal <- colorNumeric('YlOrRd', heatmaps$fillby)
+    heatmaps()$fillby <- if (input$logtransform) heatmaps()$log.result.pred else exp(heatmaps()$log.result.pred)
+    
+    pal <- colorNumeric('YlOrRd', heatmaps()$fillby)
     pal2 <- colorNumeric('YlOrRd', parceldata$results)
     # xmark <- makeIcon(
     #   iconUrl = 'https://cdn-icons-png.flaticon.com/128/2976/2976286.png', 
@@ -88,7 +96,7 @@ server <- function(input, output, session) {
       clearShapes() %>%
       clearControls() %>% 
       addPolygons(
-        data = heatmaps, 
+        data = heatmaps(), 
         weight = 0.2, 
         fillColor = ~ pal(fillby), 
         fillOpacity = 0.8, 
@@ -223,7 +231,8 @@ server <- function(input, output, session) {
       p +
       labs(x = 'Concentration (ppb)', y = 'Density')
 
-    })
+    }) %>% 
+    bindCache(input$mapAnalyteGroup)
 
   output$mapTable <- renderTable({
     req(input$mapAnalyteGroup)
@@ -236,7 +245,8 @@ server <- function(input, output, session) {
       "Geometric mean", paste0(round(exp(mean(log(tabledata$est_conc)))), ' ppb'),
       "Maximum", paste0(round(max(tabledata$est_conc)), ' ppb'),
     )
-  }, width = '100%', colnames = T)
+  }, width = '100%', colnames = T) %>% 
+    bindCache(input$mapAnalyteGroup)
 
 
   output$infoText <- renderUI({
