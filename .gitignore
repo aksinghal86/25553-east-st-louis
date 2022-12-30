@@ -1,4 +1,6 @@
 data/
+dashboard/assets/
+dashboard/data/
 
 # History files
 .Rhistory
