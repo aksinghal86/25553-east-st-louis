@@ -17,8 +17,9 @@ totals %>% group_by(analyte) %>% count
 # Create raster
 # Ideally, this can be done using marmap to get bathymetric grids but I'm unable to do this on my computer. 
 # For some reason, there appears to be a conflict between rgdal, raster, and marmap packages
-r <- rast(sfdf, ncol = 1000, nrow = 1000)
+# r <- rast(sfdf, ncol = 100, nrow = 100)
 
+r <- rast(nrows = 1000, ncols = 1000, xmin = -90.172, ymin = 38.595, xmax = -90.148, ymax = 38.616)
 # This raster is for the whole city but it is a far bigger area than that sampled. 
 # r <- rast(nrows = 100, ncols = 100, xmin = -90.18666, ymin = 38.57875, xmax = -90.04169, ymax = 38.64267)
 names(r) <- 'log.result'
