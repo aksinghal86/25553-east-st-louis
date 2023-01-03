@@ -1,5 +1,79 @@
 server <- function(input, output, session) { 
   
+  
+  output$densityPlot <- renderPlot({
+    req(input$mapAnalyteGroup)
+    
+    plotdata <- df %>% filter(analyte == input$mapAnalyteGroup)
+    
+    p <- ggplot(plotdata, aes(x = est_conc)) +
+      geom_histogram(aes(y = ..density..), alpha = 0.5, fill = '#bba567', color = '#f5f5f5') +
+      geom_density(color = '#bf7e65', size = 1) +
+      theme_classic() +
+      theme(plot.title.position = 'plot',
+            plot.background = element_rect(fill = '#f5f5f5'),
+            panel.background = element_rect(fill = '#f5f5f5'),
+            panel.border = element_blank(),
+            panel.grid = element_blank(),
+            text = element_text(size = 12))
+    if (input$logtransform)
+      p +
+      scale_x_log10() +
+      labs(x = 'Concentration, log scale (ppb)', y = 'Density')
+    else
+      p +
+      labs(x = 'Concentration (ppb)', y = 'Density')
+    
+  }) %>% 
+    bindCache(input$mapAnalyteGroup)
+  
+  output$mapTable <- renderTable({
+    req(input$mapAnalyteGroup)
+    
+    tabledata <- df %>% filter(analyte == input$mapAnalyteGroup)
+    tribble(
+      ~ Metric, ~ Value,
+      # "Avg % detected", paste0(round(mean(tabledata$detected), 2)*100, '%'),
+      "Arithmetic mean", paste0(round(mean(tabledata$est_conc)), ' ppb'),
+      "Geometric mean", paste0(round(exp(mean(log(tabledata$est_conc)))), ' ppb'),
+      "Maximum", paste0(round(max(tabledata$est_conc)), ' ppb'),
+    )
+  }, width = '100%', colnames = T) %>% 
+    bindCache(input$mapAnalyteGroup, input$logtransform)
+  
+  
+  output$infoText <- renderUI({
+    req(input$mapAnalyteGroup)
+    
+    infodata <- df %>% filter(analyte == input$mapAnalyteGroup)
+    tagList(
+      tags$h4(input$mapAnalyteGroup, style = 'text-align: center; '),
+      
+      tags$br(), 
+      tags$p(style = 'font-size: 12px; ',
+             'Individual parcel results for', tolower(input$mapAnalyteGroup), 'are shown on the map.', 
+             'Hovering over a parcel will provide the parcel number, total concentration, and the rank.', 
+             'In addition, a heatmap is superimposed with interpolated values in the region of interest.',
+             'Possible alternate sources (not comprehensive) are shown as orange markers.',
+             br(), br(),
+             'Pertinent summary statistics are shown below along with a distribution of the data.', 
+             'Refer to the', em("Data Explorer"), 'tab in the navigation panel for the raw data.'
+      ),
+      
+      plotOutput('densityPlot', height = '10vw'),
+      
+      tags$br(), 
+      tags$p(style = 'font-size: 12px; ',
+             'Approximately', paste0(round(mean(infodata$detected), 2)*100, '%'), 
+             'of the individual congeners had a reported value above the detection limit.',
+      ),
+      
+      div(tableOutput('mapTable'), style = 'font-size: 12px'),
+    )
+    
+  }) %>% 
+    bindCache(input$mapAnalyteGroup)
+  
   ## MAP ---------------------------------------------------------------------
   output$map <- renderLeaflet({
     
@@ -57,34 +131,29 @@ server <- function(input, output, session) {
     }
   })
   
-  heatmaps <- reactive({
-    req(input$mmapAnalyteGroup)
-    
-    heatmap_rasters <- terra::rast(paste0('data/rasters/', input$mapAnalyteGroup, '.tif'))
-    heatmaps <- sf::st_as_sf(terra::as.polygons(heatmap_rasters, na.rm = T)) 
-    heatmaps
-  }) %>% 
-    bindCache(input$mapAnalyteGroup)
   
-  observe({ 
-    req(input$mapAnalyteGroup) 
-    
-    # Format data
-    parceldata <- sfdf %>%
+  # Format data
+  parceldata <- reactive({
+    sfdf %>%
       filter(analyte == input$mapAnalyteGroup) %>%
       arrange(desc(est_conc)) %>%
       rownames_to_column(var = 'rank') %>%
       mutate(results = case_when(input$logtransform ~ log(est_conc), TRUE ~ est_conc),
-             stroke_colour = '#FFFFFF',
              tooltip = paste0('Parcel: ', parcelnumb, '<br>',
                               input$mapAnalyteGroup, ': ', round(est_conc), ' ppb', '<br>',
                               'Rank: ', rank))
+  }) %>% 
+    bindCache(input$mapAnalyteGroup, input$logtransform)
+  
+  observe({ 
+    req(input$mapAnalyteGroup) 
     
+    heatmap_rasters <- terra::rast(paste0('data/rasters/', input$mapAnalyteGroup, '.tif'))
+    heatmaps <- sf::st_as_sf(terra::as.polygons(heatmap_rasters, na.rm = T)) 
+    heatmaps$fillby <- if (input$logtransform) heatmaps$log.result.pred else exp(heatmaps$log.result.pred)
     
-    heatmaps()$fillby <- if (input$logtransform) heatmaps()$log.result.pred else exp(heatmaps()$log.result.pred)
-    
-    pal <- colorNumeric('YlOrRd', heatmaps()$fillby)
-    pal2 <- colorNumeric('YlOrRd', parceldata$results)
+    pal <- colorNumeric('YlOrRd', heatmaps$fillby)
+    pal2 <- colorNumeric('YlOrRd', parceldata()$results)
     # xmark <- makeIcon(
     #   iconUrl = 'https://cdn-icons-png.flaticon.com/128/2976/2976286.png', 
     #   iconWidth = 5, iconHeight = 5
@@ -96,14 +165,14 @@ server <- function(input, output, session) {
       clearShapes() %>%
       clearControls() %>% 
       addPolygons(
-        data = heatmaps(), 
+        data = heatmaps, 
         weight = 0.2, 
         fillColor = ~ pal(fillby), 
         fillOpacity = 0.8, 
         smoothFactor = 0.8
       )  %>% 
       addPolygons(
-        data = parceldata, 
+        data = parceldata(), 
         color = 'black', 
         weight = 0.8,
         opacity = 0.5,
@@ -118,7 +187,7 @@ server <- function(input, output, session) {
           ))
       ) %>% 
       addLegend(
-        data = parceldata,
+        data = parceldata(),
         position = 'bottomright', 
         pal = pal2, 
         bins = 5, 
@@ -208,77 +277,7 @@ server <- function(input, output, session) {
   # })
   # 
   # 
-  output$densityPlot <- renderPlot({
-    req(input$mapAnalyteGroup)
-
-    plotdata <- df %>% filter(analyte == input$mapAnalyteGroup)
-
-    p <- ggplot(plotdata, aes(x = est_conc)) +
-      geom_histogram(aes(y = ..density..), alpha = 0.5, fill = '#bba567', color = '#f5f5f5') +
-      geom_density(color = '#bf7e65', size = 1) +
-      theme_classic() +
-      theme(plot.title.position = 'plot',
-            plot.background = element_rect(fill = '#f5f5f5'),
-            panel.background = element_rect(fill = '#f5f5f5'),
-            panel.border = element_blank(),
-            panel.grid = element_blank(),
-            text = element_text(size = 12))
-    if (input$logtransform)
-      p +
-      scale_x_log10() +
-      labs(x = 'Concentration, log scale (ppb)', y = 'Density')
-    else
-      p +
-      labs(x = 'Concentration (ppb)', y = 'Density')
-
-    }) %>% 
-    bindCache(input$mapAnalyteGroup)
-
-  output$mapTable <- renderTable({
-    req(input$mapAnalyteGroup)
-
-    tabledata <- df %>% filter(analyte == input$mapAnalyteGroup)
-    tribble(
-      ~ Metric, ~ Value,
-      # "Avg % detected", paste0(round(mean(tabledata$detected), 2)*100, '%'),
-      "Arithmetic mean", paste0(round(mean(tabledata$est_conc)), ' ppb'),
-      "Geometric mean", paste0(round(exp(mean(log(tabledata$est_conc)))), ' ppb'),
-      "Maximum", paste0(round(max(tabledata$est_conc)), ' ppb'),
-    )
-  }, width = '100%', colnames = T) %>% 
-    bindCache(input$mapAnalyteGroup)
-
-
-  output$infoText <- renderUI({
-    req(input$mapAnalyteGroup)
-
-    infodata <- df %>% filter(analyte == input$mapAnalyteGroup)
-    tagList(
-      tags$h4(input$mapAnalyteGroup, style = 'text-align: center; '),
-      
-      tags$br(), 
-      tags$p(style = 'font-size: 12px; ',
-        'Individual parcel results for', tolower(input$mapAnalyteGroup), 'are shown on the map.', 
-        'Hovering over a parcel will provide the parcel number, total concentration, and the rank.', 
-        'In addition, a heatmap is superimposed with interpolated values in the region of interest.',
-        'Possible alternate sources (not comprehensive) are shown as orange markers.',
-        br(), br(),
-        'Pertinent summary statistics are shown below along with a distribution of the data.', 
-        'Refer to the', em("Data Explorer"), 'tab in the navigation panel for the raw data.'
-      ),
-      
-      plotOutput('densityPlot', height = '10vw'),
-      
-      tags$br(), 
-      tags$p(style = 'font-size: 12px; ',
-        'Approximately', paste0(round(mean(infodata$detected), 2)*100, '%'), 
-        'of the individual congeners had a reported value above the detection limit.',
-      ),
-
-      div(tableOutput('mapTable'), style = 'font-size: 12px'),
-    )
-
-  })
+  
   
   
   ## DATA TABLE ----------------------------------------------------------------
@@ -341,6 +340,6 @@ server <- function(input, output, session) {
         pageLength = 20,
         searching = F))
 
-  })
+  }) 
   
 }

@@ -89,3 +89,7 @@ transition: opacity 500ms 1s;
   padding: 20px 20px 20px 20px; 
   background-color: #f5f5f5;
 }
+
+.leaflet-bottom .leaflet-control {
+  margin-bottom: 30px;
+}

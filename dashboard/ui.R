@@ -28,7 +28,7 @@ ui <- navbarPage(
       # Credit
       absolutePanel( 
        id = 'cite', style = 'background-color: white;',
-       em("Created by", tags$a("Ankur Singhal", href = 'https://github.com/aksinghal86', target = '_blank'), 
+       em("Created by", tags$a("Ankur Singhal", href = 'https://www.ankursinghal.me', target = '_blank'), 
           "at Environmental Health & Engineering, Inc. "),
        br(), 
        span("ATTORNEY-CLIENT PRIVILEGED", style = 'color: red; ')
@@ -124,7 +124,7 @@ ui <- navbarPage(
             margin-bottom: 22px',  
           'Select PCB congener group to populate table!'),
     
-    DT::dataTableOutput('table')
+    DT::dataTableOutput('table', width = '100%')
   ),
   
   ## ABOUT ---------------------------------------------------------------------
