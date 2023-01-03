@@ -16,13 +16,20 @@ ui <- navbarPage(
     
     useShinyjs(),
     div( tags$head(includeCSS('www/styles.css')), 
-         tags$head(includeScript('www/script.js')) ),
+         tags$head( 
+           tags$script(" 
+             // dynamically update Information panel heading
+             Shiny.addCustomMessageHandler('info-heading', function (heading) { 
+                $( '#js_heading ').html(heading);
+             }); 
+           ")
+         ) 
+    ),
     
     div(
       class = 'outer',
 
       # Map output
-      # mapdeckOutput('map', width = '100%', height = '100%')
       leafletOutput('map', width = '100%', height = '100%'), 
       
       # Credit
@@ -46,57 +53,34 @@ ui <- navbarPage(
                    choices = c('Map', 'Terrain', 'Satellite'), 
                    selected = 'Map', 
                    inline = T),
-      selectizeInput('mapAnalyteGroup', label = NULL, choices = c('Select analyte' = '', total_analytes)),
+      selectizeInput('mapAnalyteGroup', label = NULL, choices = c('Select congener group' = '', total_analytes)),
       checkboxInput('logtransform', label = 'Log-transform', value = T),
       actionButton('clearLayers', 'Remove heatmap', icon('eraser'))
     ),
     
-    #### Layer panel ####
-    # # icon('layer-group', 'fa-2x layer-button', id = 'layerButton'), 
-    # absolutePanel(
-    #   id = 'layerPanel', draggable = F, fixed = T,
-    #   
-    #   radioButtons('mapVizType', 
-    #                label = tags$b("Visualization style"), 
-    #                choices = c('Parcel', 'Heatmap', 'IDW'), selected = 'Parcel', 
-    #                inline = T)
-    # ), 
-    # 
     
     #### Information panel ####
-    conditionalPanel(
-      'input.mapAnalyteGroup != ""',
-      absolutePanel(
-        id = 'infoPanel', draggable = F, fixed = T,
-        # plotOutput('densityPlot', height = '50%'), 
-        uiOutput('infoText')
-      )
+    absolutePanel(
+      id = 'infoPanel', draggable = F, fixed = T,
+      
+      # This heading is updated dynamically based on user selected analyte.
+      h4(id = 'js_heading', style = 'text-align: center;'),
+
+      p(style = 'font-size: 12px; ',
+         'Individual parcel results are shown on the map upon selection of the PCB congener group in the dropdown menu to the right.', 
+         'Hovering over a parcel will provide the parcel number, total concentration, and the rank.', 
+         'In addition, a heatmap will be superimposed with interpolated values in the region of interest.',
+         'Possible alternate sources (not comprehensive) are shown as orange markers.',
+         br(), br(),
+         'Refer to the', em("Data Explorer"), 'tab in the navigation panel for the raw data.'
+      ),
+      plotOutput('detectionPlot', height = '12vw'), 
+      plotOutput('densityPlot', height = '10vw'),
+      div(tableOutput('mapTable'), style = 'font-size: 12px;')
     )
   ), 
-  
-  
-  
-  ## SUMMARY CHARTS ----------------------------------------------------------
-  # tabPanel(
-  #   'Summary Charts', icon = icon('chart-bar'),
-  #   tags$p("This tools allows for comparison in emissions for a single or multiple facility over the years. ", 
-  #          "Please select the facilities in the dropdown menu below. "), 
-  #   tags$br(),
-  #   fluidRow(
-  #     column(
-  #       3, offset = 1, 
-  #       selectizeInput('site_name', NULL, 
-  #                      choices = c('Select facilities' = '', sort(unique(emissions_for_plot$site_name))), 
-  #                      multiple = T, width = '100%'), 
-  #     ), 
-  #     column(
-  #       6,
-  #       ggiraphOutput('emissions_plot')
-  #     )
-  #   )
-  # ), 
-  
-  
+
+    
   ## DATA TABLE ----------------------------------------------------------
   tabPanel(
     'Data explorer', icon = icon('table'),
@@ -125,14 +109,5 @@ ui <- navbarPage(
           'Select PCB congener group to populate table!'),
     
     DT::dataTableOutput('table', width = '100%')
-  ),
-  
-  ## ABOUT ---------------------------------------------------------------------
-  # tabPanel(
-  #   'About', icon = icon('info'),
-  #   tags$p("Created by", tags$a("Ankur Singhal", href = 'https://github.com/aksinghal86', target = '_blank'), 
-  #          "at Environmental Health & Engineering, Inc. ",
-  #          "Attorney-client privileged")
-  #          
-  # )
+  )
 )

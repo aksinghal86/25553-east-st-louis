@@ -1,6 +1,49 @@
 server <- function(input, output, session) { 
   
+  ## INFO PANEL ----------------------------------------------------------------
   
+  ####  UI components ----------------------------------------------------------
+  
+  ## Dynamically update information panel heading based on user input
+  observe({
+    heading <- if (input$mapAnalyteGroup == '') { 
+      'Information Panel'
+    } else { 
+      input$mapAnalyteGroup
+    }
+    
+    session$sendCustomMessage('info-heading', heading)
+  })
+  
+  #### Detection plot ----------------------------------------------------------
+  output$detectionPlot <- renderPlot({
+    req(input$mapAnalyteGroup) 
+    
+    plotdata <- df %>% 
+      filter(str_detect(analyte, 'Total')) %>% 
+      group_by(analyte, analyte_pr, n_cl) %>% 
+      summarize(detected = mean(detected)*100) %>% 
+      mutate(highlight = case_when(analyte == input$mapAnalyteGroup ~ '#bf7e65'))
+    
+    ggplot(plotdata, aes(x = reorder(analyte_pr, n_cl), y = detected)) + 
+      geom_point(aes(color = highlight), alpha = 0.85, size = 2) +
+      geom_segment(aes(xend = analyte_pr, y = 0, yend = detected, color = highlight), alpha = 0.5, size = 0.85) + 
+      labs(y = '% detected', x = NULL, title = 'Avg % detected by congener group', 
+           subtitle = 'Selected congener group in orange') + 
+      coord_flip() + 
+      theme_classic() + 
+      theme(plot.title.position = 'plot',
+            plot.background = element_rect(fill = '#f5f5f5'),
+            panel.background = element_rect(fill = '#f5f5f5'),
+            panel.border = element_blank(),
+            panel.grid = element_blank(),
+            text = element_text(size = 12),
+            legend.position = 'none')
+  }) %>% 
+    bindCache(input$mapAnalyteGroup)
+  
+  
+  #### Density plot ------------------------------------------------------------
   output$densityPlot <- renderPlot({
     req(input$mapAnalyteGroup)
     
@@ -15,31 +58,35 @@ server <- function(input, output, session) {
             panel.background = element_rect(fill = '#f5f5f5'),
             panel.border = element_blank(),
             panel.grid = element_blank(),
-            text = element_text(size = 12))
+            text = element_text(size = 12),
+            legend.position = 'none')
     if (input$logtransform)
       p +
       scale_x_log10() +
-      labs(x = 'Concentration, log scale (ppb)', y = 'Density')
+      labs(x = 'Concentration, log scale (ppb)', y = 'Density', title = 'Distribution of data on log scale')
     else
       p +
-      labs(x = 'Concentration (ppb)', y = 'Density')
+      labs(x = 'Concentration (ppb)', y = 'Density', title = 'Distibution of data')
     
   }) %>% 
-    bindCache(input$mapAnalyteGroup)
+    bindCache(input$mapAnalyteGroup, input$logtransform)
   
+  
+  
+  #### Table for Info panel ---------------------------------------------------
   output$mapTable <- renderTable({
     req(input$mapAnalyteGroup)
     
     tabledata <- df %>% filter(analyte == input$mapAnalyteGroup)
     tribble(
       ~ Metric, ~ Value,
-      # "Avg % detected", paste0(round(mean(tabledata$detected), 2)*100, '%'),
+      "Avg % detected", paste0(round(mean(tabledata$detected), 2)*100, '%'),
       "Arithmetic mean", paste0(round(mean(tabledata$est_conc)), ' ppb'),
       "Geometric mean", paste0(round(exp(mean(log(tabledata$est_conc)))), ' ppb'),
       "Maximum", paste0(round(max(tabledata$est_conc)), ' ppb'),
     )
-  }, width = '100%', colnames = T) %>% 
-    bindCache(input$mapAnalyteGroup, input$logtransform)
+  }, width = '100%', colnames = T, spacing = 'xs') %>% 
+    bindCache(input$mapAnalyteGroup)
   
   
   output$infoText <- renderUI({
@@ -74,7 +121,12 @@ server <- function(input, output, session) {
   }) %>% 
     bindCache(input$mapAnalyteGroup)
   
+  
+  
+  
   ## MAP ---------------------------------------------------------------------
+  
+  #### Default map ----------------------------------------------------------
   output$map <- renderLeaflet({
     
     alt_icons <- awesomeIcons(
@@ -97,15 +149,7 @@ server <- function(input, output, session) {
       )
   })
 
-  
-  # output$map <- renderMapdeck({
-  #   token <- read_lines('assets/mapdeck-token.txt')
-  #   mapdeck(style = mapdeck_style('dark'), token = token) %>%
-  #     mapdeck_view(location = c(-90.17, 38.605), zoom = 14, pitch = 10)
-  # })
-
-  
-  ## Map styles and layers
+  #### Map styles and layers ---------------------------------------------------
   observeEvent(input$mapStyle, {
     
     if(input$mapStyle == 'Map') {
@@ -113,26 +157,23 @@ server <- function(input, output, session) {
         clearTiles() %>% 
         # addProviderTiles(providers$CartoDB.DarkMatter)
         addProviderTiles(providers$CartoDB.Positron)
-      # mapdeck_update(map_id = 'map') %>%
-      #   update_style(style = mapdeck_style('dark'))
     } else if (input$mapStyle == "Terrain") {
       leafletProxy('map') %>%
         clearTiles() %>% 
         addProviderTiles(providers$Esri.WorldTopoMap)
-      # mapdeck_update(map_id = 'map') %>%
-      #   update_style(style = mapdeck_style('outdoors'))
     } else if (input$mapStyle == 'Satellite') {
       leafletProxy('map') %>%
         clearTiles() %>% 
         addProviderTiles(providers$Esri.WorldImagery) %>% 
         addProviderTiles(providers$CartoDB.PositronOnlyLabels)
-      # mapdeck_update(map_id = 'map') %>%
-      #   update_style(style = mapdeck_style('satellite-streets'))
     }
   })
   
   
-  # Format data
+  
+  #### Data selection, format, plus layered map --------------------------------
+  
+  # This is reactive and cached to try to speed up the load time. 
   parceldata <- reactive({
     sfdf %>%
       filter(analyte == input$mapAnalyteGroup) %>%
@@ -145,6 +186,8 @@ server <- function(input, output, session) {
   }) %>% 
     bindCache(input$mapAnalyteGroup, input$logtransform)
   
+  
+  # Make the heatmaps and plot on map
   observe({ 
     req(input$mapAnalyteGroup) 
     
@@ -154,12 +197,12 @@ server <- function(input, output, session) {
     
     pal <- colorNumeric('YlOrRd', heatmaps$fillby)
     pal2 <- colorNumeric('YlOrRd', parceldata()$results)
+    
+    ## In case we want to superimpose an x mark on top of parcels (see below)
     # xmark <- makeIcon(
     #   iconUrl = 'https://cdn-icons-png.flaticon.com/128/2976/2976286.png', 
     #   iconWidth = 5, iconHeight = 5
     # )
-    
-    
     
     leafletProxy('map') %>% 
       clearShapes() %>%
@@ -195,6 +238,7 @@ server <- function(input, output, session) {
         labFormat = labelFormat(transform = function(x) if (input$logtransform) round(exp(x)) else x), 
         title = HTML('Concentration<br>(ppb)')
       )  
+      ## In case we want to superimpose to x mark on top of parcels (see above)
       # addMarkers(
       #   data = parceldata, 
       #   lng = ~lon, 
@@ -206,125 +250,33 @@ server <- function(input, output, session) {
     
   })
   
+  
+  
+  
+  ## MAP TOOLS PANEL  -----------------------------------------------------------
+  
+  #### UI components -----------------------------------------------------------
+  
+  # This removes all layers and resets the dropdown menu
   observeEvent(input$clearLayers, {
+    
     leafletProxy('map') %>% 
       clearShapes() %>% 
       clearControls()
-      
+    
+    updateSelectizeInput(session, 'mapAnalyteGroup', selected = '', server = F)
   })
-  # observe({
-  #   req(input$mapAnalyteGroup)
-  #   # req(input$mapVizType)
-  # 
-    # # Format data
-    # mapdata <- sfdf %>%
-    #   filter(analyte == input$mapAnalyteGroup) %>%
-    #   arrange(desc(est_conc)) %>%
-    #   rownames_to_column(var = 'rank') %>%
-    #   mutate(results = case_when(input$logtransform ~ log(est_conc), TRUE ~ est_conc),
-    #          stroke_colour = '#FFFFFF',
-    #          tooltip = paste0('Parcel: ', parcelnumb, '<br>',
-    #                           input$mapAnalyteGroup, ': ', round(est_conc), ' ppb', '<br>',
-    #                           'Rank: ', rank))
-  # 
-  #   mapdeck_update(map_id = 'map') %>%
-  #     clear_polygon('polygon') %>%
-  #     clear_heatmap('heatmap')
-  # 
-  #   if (input$mapVizType == 'Parcel') {
-  #     mapdeck_update(map_id = 'map') %>%
-  #       add_polygon(
-  #         mapdata,
-  #         stroke_width = 0.2,
-  #         fill_colour = 'results',
-  #         fill_opacity = 0.85,
-  #         tooltip = 'tooltip',
-  #         auto_highlight = T,
-  #         update_view = F,
-  #         palette = 'diverge_hcl',
-  #         layer_id = 'polygon'
-  #       )
-  #   } else if (input$mapVizType == "Heatmap") {
-  #     mapdeck_update(map_id = 'map') %>%
-  #       add_heatmap(
-  #         mapdata,
-  #         lat = 'lat',
-  #         lon = 'lon',
-  #         weight = 'results',
-  #         update_view = F,
-  #         layer_id = 'heatmap'
-  #       )
-  #   } else if (input$mapVizType == 'IDW') {
-      # r <- terra::rast(paste0('data/rasters/', input$mapAnalyteGroup, '.tif'))
-      # rp <- sf::st_as_sf(terra::as.polygons(r))
-  # 
-  #     mapdeck_update(map_id = 'map') %>%
-  #       add_polygon(
-  #         data = rp,
-  #         fill_colour = 'log.result.pred',
-  #         fill_opacity = 0.75,
-  #         palette = 'viridis',
-  #         layer = 'krig') %>%
-  #       add_polygon(
-  #         data = mapdata,
-  #         fill_opacity = 0,
-  #         stroke_colour = 'stroke_colour', 
-  #         stroke_width = 0.8,
-  #         tooltip = 'tooltip'
-  #       )
-  # 
-  #   }
-  # })
-  # 
-  # 
+  
   
   
   
   ## DATA TABLE ----------------------------------------------------------------
-  
   output$table <- DT::renderDataTable({ 
     tabledata <- df %>% 
       filter(analyte_pr == input$tableAnalyteGroup, 
              !str_detect(analyte, 'Total'), est_conc > 0) %>% 
       select(parcelnumb, analyte, lab, detected, est_conc) %>% 
       mutate(detected = as.logical(detected))
-    
-   
-    
-    # reactable(
-    #   tabledata, 
-    #   striped = T, 
-    #   compact = T, 
-    #   searchable = F, 
-    #   filterable = T, 
-    #   pagination = T, 
-    #   defaultSorted = c('analyte'), 
-    #   defaultPageSize = 25, 
-    #   columns = list(
-    #     analyte = colDef(
-    #       name = 'Analyte', 
-    #       minWidth = 250, 
-    #       class = 'analyte-col'
-    #     ), 
-    #     lab = colDef(
-    #       name = 'Lab'
-    #     ), 
-    #     parcelnumb = colDef(
-    #       name = 'Parcel'
-    #     ), 
-    #     detected = colDef(
-    #       name = 'Detected', 
-    #       class = 'detected-col'
-    #     ), 
-    #     est_conc = colDef(
-    #       name = 'Concentration<br>(ppb)',
-    #       class = 'conc-col', 
-    #       html = T
-    #     )
-    #   ), 
-    #   borderless = T, 
-    #   class = 'explorer-table'
-    # )      
     
     DT::datatable(
       tabledata,
@@ -339,7 +291,6 @@ server <- function(input, output, session) {
           list(width = '150px', targets = 1)),
         pageLength = 20,
         searching = F))
-
   }) 
   
 }
