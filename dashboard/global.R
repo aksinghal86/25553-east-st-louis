@@ -9,7 +9,7 @@ library(sf)
 library(leaflet)
 library(reactable)
 
-# shinyOptions(cache = cachem::cache_disk(file.path(dirname(tempdir()), "esl-dashboard-cache")))
+shinyOptions(cache = cachem::cache_disk(file.path(dirname(tempdir()), "esl-dashboard-cache")))
 # shinyOptions(cache = cachem::cache_disk("./esl-dashboard-cache"))
 
 

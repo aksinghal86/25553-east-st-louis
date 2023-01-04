@@ -88,42 +88,6 @@ server <- function(input, output, session) {
   }, width = '100%', colnames = T, spacing = 'xs') %>% 
     bindCache(input$mapAnalyteGroup)
   
-  
-  output$infoText <- renderUI({
-    req(input$mapAnalyteGroup)
-    
-    infodata <- df %>% filter(analyte == input$mapAnalyteGroup)
-    tagList(
-      tags$h4(input$mapAnalyteGroup, style = 'text-align: center; '),
-      
-      tags$br(), 
-      tags$p(style = 'font-size: 12px; ',
-             'Individual parcel results for', tolower(input$mapAnalyteGroup), 'are shown on the map.', 
-             'Hovering over a parcel will provide the parcel number, total concentration, and the rank.', 
-             'In addition, a heatmap is superimposed with interpolated values in the region of interest.',
-             'Possible alternate sources (not comprehensive) are shown as orange markers.',
-             br(), br(),
-             'Pertinent summary statistics are shown below along with a distribution of the data.', 
-             'Refer to the', em("Data Explorer"), 'tab in the navigation panel for the raw data.'
-      ),
-      
-      plotOutput('densityPlot', height = '10vw'),
-      
-      tags$br(), 
-      tags$p(style = 'font-size: 12px; ',
-             'Approximately', paste0(round(mean(infodata$detected), 2)*100, '%'), 
-             'of the individual congeners had a reported value above the detection limit.',
-      ),
-      
-      div(tableOutput('mapTable'), style = 'font-size: 12px'),
-    )
-    
-  }) %>% 
-    bindCache(input$mapAnalyteGroup)
-  
-  
-  
-  
   ## MAP ---------------------------------------------------------------------
   
   #### Default map ----------------------------------------------------------
