@@ -1,11 +1,12 @@
 server <- function(input, output, session) {
   
-  map_selected_data <- eventReactive(input$mapAnalyteGroup, { 
+  map_selected_data <- reactive({ 
     totals %>% 
       filter(analyte == input$mapAnalyteGroup)
-  }) 
+  }) %>% 
+    bindEvent(input$mapAnalyteGroup)
   
-  map_selected_data_sf <- eventReactive(c(input$mapAnalyteGroup, input$logtransform), { 
+  map_selected_data_sf <- reactive({ 
     sfdf %>% 
       filter(analyte == input$mapAnalyteGroup) %>% 
       arrange(desc(est_conc)) %>%
@@ -14,18 +15,19 @@ server <- function(input, output, session) {
              tooltip = paste0('Parcel: ', parcelnumb, '<br>',
                               input$mapAnalyteGroup, ': ', round(est_conc), ' ppb', '<br>',
                               'Rank: ', rank))
-  }) 
+  }) %>% 
+    bindEvent(input$mapAnalyteGroup, input$logtransform)
   
   
   # Heatmaps 
-  heatmap <- eventReactive(c(input$mapAnalyteGroup, input$logtransform), { 
+  heatmap <- reactive({ 
     # Get the heatmap image for the selected analyte
     heatmap_raster <- terra::rast(paste0('data/rasters/', input$mapAnalyteGroup, '.tif'))
     heatmap <- sf::st_as_sf(terra::as.polygons(heatmap_raster, na.rm = T))
     heatmap$fillby <- if (input$logtransform) heatmap$log.result.pred else exp(heatmap$log.result.pred)
     heatmap
-  })
-  
+  }) %>% 
+    bindEvent(input$mapAnalyteGroup, input$logtransform)
   
   ## INFO PANEL ----------------------------------------------------------------
   
@@ -56,13 +58,17 @@ server <- function(input, output, session) {
     req(input$mapAnalyteGroup) 
     
     plotdata <- totals %>% 
+      # filter(!is.na(n_cl)) %>%
       group_by(analyte, analyte_pr, n_cl) %>% 
       summarize(detected = mean(detected)*100) %>% 
       mutate(highlight = case_when(analyte == input$mapAnalyteGroup ~ '#bf7e65'))
-    
+
     ggplot(plotdata, aes(x = reorder(analyte_pr, n_cl), y = detected)) + 
-      geom_point(aes(color = highlight), alpha = 0.85, size = 2) +
-      geom_segment(aes(xend = analyte_pr, y = 0, yend = detected, color = highlight), alpha = 0.5, size = 0.85) + 
+      geom_point(aes(color = highlight), #color = if( input$mapAnalyteGroup == 'Total PCBs') NULL else highlight), 
+                 alpha = 0.85, size = 2) +
+      geom_segment(aes(xend = analyte_pr, y = 0, yend = detected, 
+                       color = highlight), #color = if( input$mapAnalyteGroup == 'Total PCBs') NULL else highlight), 
+                   alpha = 0.85, size = 0.85) + 
       labs(y = '% detected', x = NULL, title = 'Avg % detected by congener group', 
            subtitle = 'Selected congener group in orange') + 
       coord_flip() + 
@@ -74,15 +80,13 @@ server <- function(input, output, session) {
             panel.grid = element_blank(),
             text = element_text(size = 12),
             legend.position = 'none')
-  }) %>% 
-    bindCache(input$mapAnalyteGroup)
-  
+  }) 
   
   #### Density plot ------------------------------------------------------------
   output$densityPlot <- renderPlot({
     req(input$mapAnalyteGroup)
     
-    plotdata <- map_selected_data()
+    plotdata <- map_selected_data() 
     
     p <- ggplot(plotdata, aes(x = est_conc)) +
       geom_histogram(aes(y = ..density..), alpha = 0.5, fill = '#bba567', color = '#f5f5f5') +
@@ -94,18 +98,17 @@ server <- function(input, output, session) {
             panel.border = element_blank(),
             panel.grid = element_blank(),
             text = element_text(size = 12),
-            legend.position = 'none')
+            legend.position = 'none') 
     if (input$logtransform)
       p +
       scale_x_log10() +
+      annotation_logticks(sides = 'b') + 
       labs(x = 'Concentration, log scale (ppb)', y = 'Density', title = 'Distribution of data on log scale')
     else
       p +
       labs(x = 'Concentration (ppb)', y = 'Density', title = 'Distibution of data')
     
-  }) %>% 
-    bindCache(input$mapAnalyteGroup, input$logtransform)
-  
+  })
   
   
   #### Table for Info panel ---------------------------------------------------
@@ -120,8 +123,7 @@ server <- function(input, output, session) {
       "Geometric mean", paste0(round(exp(mean(log(tabledata$est_conc)))), ' ppb'),
       "Maximum", paste0(round(max(tabledata$est_conc)), ' ppb'),
     )
-  }, width = '100%', colnames = T, spacing = 'xs') %>% 
-    bindCache(input$mapAnalyteGroup)
+  }, width = '100%', colnames = T, spacing = 'xs') 
   
   ## MAP ---------------------------------------------------------------------
   
@@ -186,6 +188,36 @@ server <- function(input, output, session) {
   #### Data selection, format, plus layered map --------------------------------
   
   # Make the heatmaps and plot on map
+  
+  observe({ 
+    req(input$mapAnalyteGroup)
+
+    pal <- colorNumeric('YlOrRd', heatmap()$fillby)
+    pal2 <- colorNumeric('YlOrRd', map_selected_data_sf()$results)
+    
+    leafletProxy('map') %>%
+      clearGroup('heatmap') %>%
+      clearControls() %>%
+      addPolygons(
+        group = 'heatmap',
+        data = heatmap(),
+        weight = 0.2,
+        fillColor = ~ pal(fillby),
+        fillOpacity = 0.8,
+        smoothFactor = 0.8
+      ) %>%
+      addLegend(
+        data = map_selected_data_sf(),
+        position = 'bottomright',
+        pal = pal2,
+        bins = 5,
+        values = ~ results,
+        labFormat = labelFormat(transform = function(x) if (input$logtransform) round(exp(x)) else x),
+        title = HTML('Concentration<br>(ppb)')
+      )
+  })
+  
+  
   observe({
     req(input$mapAnalyteGroup)
 
@@ -195,8 +227,8 @@ server <- function(input, output, session) {
              opacity = case_when(est_conc > input$threshold ~ 0.5, TRUE ~ 0))
     
   
-    pal <- colorNumeric('YlOrRd', heatmap()$fillby)
-    pal2 <- colorNumeric('YlOrRd', parceldata_sf$results)
+    
+    pal2 <- colorNumeric('YlOrRd', map_selected_data_sf()$results)
     
     ## In case we want to superimpose an x mark on top of parcels (see below)
     # xmark <- makeIcon(
@@ -205,17 +237,8 @@ server <- function(input, output, session) {
     # )
     
     leafletProxy('map') %>%
-      clearGroup(c('heatmap', 'parcelConc')) %>%
+      clearGroup('parcelConc') %>%
       # clearShapes() %>%
-      clearControls() %>%
-      addPolygons(
-        group = 'heatmap',
-        data = heatmap(),
-        weight = 0.2,
-        fillColor = ~ pal(fillby),
-        fillOpacity = 0.8,
-        smoothFactor = 0.8
-      ) %>% 
       addPolygons(
         group = 'parcelConc',
         data = parceldata_sf,
@@ -231,16 +254,7 @@ server <- function(input, output, session) {
             "background-color" = "#f5f5f5",
             'border-color' = '#f5f5f5'
           ))
-      ) %>%
-      addLegend(
-        data = parceldata_sf,
-        position = 'bottomright',
-        pal = pal2,
-        bins = 5,
-        values = ~ results,
-        labFormat = labelFormat(transform = function(x) if (input$logtransform) round(exp(x)) else x),
-        title = HTML('Concentration<br>(ppb)')
-      )
+      ) 
     ## In case we want to superimpose to x mark on top of parcels (see above)
     # addMarkers(
     #   data = parceldata,
@@ -257,18 +271,16 @@ server <- function(input, output, session) {
 
   #### UI components -----------------------------------------------------------
 
-  # This removes all layers and resets the dropdown menu
-  observeEvent(input$clearLayers, {
+  # # This removes all layers and resets the dropdown menu
+  # observeEvent(input$clearLayers, {
+  # 
+  #   leafletProxy('map') %>%
+  #     clearGroup(c('heatmap')) 
+  # 
+  #   
+  # })
 
-    leafletProxy('map') %>%
-      clearGroup(c('heatmap')) 
 
-    
-  })
-
-
-  
-  
   ## DATA TABLE ----------------------------------------------------------------
   output$table <- DT::renderDataTable({ 
     tabledata <- df %>% 

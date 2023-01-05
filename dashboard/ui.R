@@ -33,9 +33,9 @@ ui <- navbarPage(
       # Map output
       leafletOutput('map', width = '100%', height = '100%'), 
       
-      # Credit
+      #### Credit ####
       absolutePanel(
-       id = 'cite', style = 'background-color: white;',
+       id = 'cite',
        em("Created by", tags$a("Ankur Singhal", href = 'https://www.ankursinghal.me', target = '_blank'), 
           "at Environmental Health & Engineering, Inc. "),
        br(), 
@@ -79,14 +79,15 @@ ui <- navbarPage(
 
       p(style = 'font-size: 12px; ',
          'Individual parcel results are shown on the map upon selection of the PCB congener group in the dropdown menu to the right.', 
-         'Hovering over a parcel will provide the parcel number, total concentration, and the rank.', 
-         'In addition, a heatmap will be superimposed with interpolated values in the region of interest.',
-         'Possible alternate sources (not comprehensive) are shown as orange markers.',
+         'Hovering over a parcel provides the parcel number, total concentration, and the rank.', 
+         'A heatmap is also superimposed with interpolated values in the region of interest.',
+         'Former Monsanto plant boundary (Gonzalez et al. 2010) is shown as red outline. ',
+         'Slider at the bottom center allows filtering of parcels above the concentration threshold. ',
          br(), br(),
          'Refer to the', em("Data Explorer"), 'tab in the navigation panel for the raw data.'
       ),
-      plotOutput('detectionPlot', height = '12vw'), 
-      plotOutput('densityPlot', height = '10vw'),
+        plotOutput('detectionPlot', height = '180px'), 
+      plotOutput('densityPlot', height = '125px'),
       div(tableOutput('mapTable'), style = 'font-size: 12px;')
     )
   ), 
