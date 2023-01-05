@@ -12,6 +12,12 @@ ggplot(df %>% filter(str_detect(analyte, 'Total')), aes(x = lon, y = lat)) +
   theme_void()
 
 totals <- df %>% filter(str_detect(analyte, 'Total')) 
+total_pcbs <- totals %>% 
+  group_by(parcelnumb, geoid, city, county, lat, lon, lab, units, sampling_d) %>% 
+  summarize(analyte = 'Total PCBs', 
+            est_conc = sum(est_conc)) %>% 
+  ungroup()
+totals <- totals %>% bind_rows(total_pcbs) %>% arrange(parcelnumb, n_cl)
 totals %>% group_by(analyte) %>% count
 
 # Create raster

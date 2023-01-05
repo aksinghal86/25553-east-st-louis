@@ -90,6 +90,16 @@ df_by_parcel <- alpha_by_parcel %>%
   bind_rows(cape_by_parcel) %>% 
   mutate(parcel = str_pad(parcel, 11, 'left', '0')) %>% 
   ungroup()
+
+total_pcbs <- df_by_parcel %>% 
+  filter(str_detect(analyte, 'Total')) %>% 
+  group_by(lab, parcel, units, sampling_date) %>% 
+  summarize(analyte = 'Total PCBs', 
+            est_conc = sum(est_conc)) %>% 
+  ungroup()
+
+df_by_parcel <- df_by_parcel %>% bind_rows(total_pcbs) %>% arrange(parcel, n_cl)
+
 write_csv(df_by_parcel, 'data/trimmed-data-by-parcel.csv')
 
 ## With shapes
@@ -109,6 +119,7 @@ df_by_parcel %>% distinct(parcel) %>% count
 df_by_parcel %>% filter(!df_by_parcel$parcel %in% unique(sfdf$parcelnumb)) %>% distinct(parcel)
 # two parcels 00000000ROW and RIGHT OF WAY are not actual parcels
 # therefore, no geocodes associted with them. 
+# apparently, these were collected on the boundary near Monsanto Way. 
 
 writeVector(sfdf, 'data/gis/all-data-with-geos.shp', overwrite = T)
 writeVector(sfdf, 'dashboard/data/gis/all-data-with-geos.shp', overwrite = T)

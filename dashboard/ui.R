@@ -1,20 +1,21 @@
-total_analytes <- df %>% filter(str_detect(analyte, 'Total')) %>% arrange(n_cl) %>% pull(analyte) %>% unique()
+total_analytes <- totals %>% arrange(n_cl) %>% pull(analyte) %>% unique()
 
 ui <- navbarPage(
   title = 'East St. Louis PCB Sampling Dashboard', 
-  windowTitle = 'ESL PCB Dashboard', 
+  windowTitle = 'E. STL PCB Dashboard', 
   # theme = bslib::bs_theme(
   #   version = 5,
   #   primary = "#002FA7",
   #   `form-check-input-checked-bg-color` = "#002FA7"
   # ),
   id = 'nav',
-  
+
   ## INTERACTIVE MAP ---------------------------------------------------------
   tabPanel(
     'Interactive Map', icon = icon('map'), 
     
     useShinyjs(),
+    
     div( tags$head(includeCSS('www/styles.css')), 
          tags$head( 
            tags$script(" 
@@ -33,12 +34,14 @@ ui <- navbarPage(
       leafletOutput('map', width = '100%', height = '100%'), 
       
       # Credit
-      absolutePanel( 
+      absolutePanel(
        id = 'cite', style = 'background-color: white;',
        em("Created by", tags$a("Ankur Singhal", href = 'https://www.ankursinghal.me', target = '_blank'), 
           "at Environmental Health & Engineering, Inc. "),
        br(), 
-       span("ATTORNEY-CLIENT PRIVILEGED", style = 'color: red; ')
+       tags$b('DRAFT'), 
+       br(),
+       span(tags$b("ATTORNEY-CLIENT PRIVILEGED"), style = 'color: red; ')
       )
     ),
     
@@ -53,11 +56,19 @@ ui <- navbarPage(
                    choices = c('Map', 'Terrain', 'Satellite'), 
                    selected = 'Map', 
                    inline = T),
-      selectizeInput('mapAnalyteGroup', label = NULL, choices = c('Select congener group' = '', total_analytes)),
-      checkboxInput('logtransform', label = 'Log-transform', value = T),
-      actionButton('clearLayers', 'Remove heatmap', icon('eraser'))
+      selectizeInput('mapAnalyteGroup', label = NULL, choices = c('Select congener group' = '', total_analytes), selected = 'Total PCBs'),
+      shinyWidgets::switchInput('logtransform', 'Log-transform', value = T, size = 'small', labelWidth = '150px'),
+      # shinyWidgets::switchInput('showHeatmap', 'Show heatmap', value = T,  size = 'small', labelWidth = '150px')
     ),
     
+    #### Slider panel ####
+    conditionalPanel(
+      'input.mapAnalyteGroup != ""',
+      absolutePanel(
+        id = 'sliderPanel', draggable = F, fixed = T, 
+        sliderInput('threshold', 'Concentration threshold', min = 0, max = 23000, round = T, sep = '', value = 0, width = '25vw')
+      )
+    ), 
     
     #### Information panel ####
     absolutePanel(
@@ -89,7 +100,7 @@ ui <- navbarPage(
     div(style = 'display: inline-block;', 
          selectizeInput(
            'tableAnalyteGroup', label = NULL,
-           choices = c('Select analyte group' = '', df %>% arrange(n_cl) %>% pull(analyte_pr) %>% unique())
+           choices = c('Select analyte group' = '', df %>% filter(!is.na(n_cl)) %>% arrange(n_cl) %>% pull(analyte_pr) %>% unique())
            )
         ),
 
