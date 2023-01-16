@@ -14,7 +14,8 @@ server <- function(input, output, session) {
       mutate(results = case_when(input$logtransform ~ log(est_conc), TRUE ~ est_conc),
              tooltip = paste0('Parcel: ', parcelnumb, '<br>',
                               input$mapAnalyteGroup, ': ', round(est_conc), ' ppb', '<br>',
-                              'Rank: ', rank))
+                              'Rank: ', rank, '<br>', 
+                              'Sample ID(s): ', sample_ids))
   }) %>% 
     bindEvent(input$mapAnalyteGroup, input$logtransform)
   
@@ -103,10 +104,13 @@ server <- function(input, output, session) {
       p +
       scale_x_log10() +
       annotation_logticks(sides = 'b') + 
-      labs(x = 'Concentration, log scale (ppb)', y = 'Density', title = 'Distribution of data on log scale')
+      labs(x = 'Concentration, log scale (ppb)', y = 'Density', 
+           title = 'Distribution of data on log scale', 
+           subtitle = 'NDs = DL/2')
     else
       p +
-      labs(x = 'Concentration (ppb)', y = 'Density', title = 'Distibution of data')
+      labs(x = 'Concentration (ppb)', y = 'Density', title = 'Distibution of data', 
+           subtitle = 'NDs = DL/2')
     
   })
   
@@ -148,16 +152,27 @@ server <- function(input, output, session) {
       #   labelOptions = labelOptions(noHide = T)
       # ) %>% 
       addPolygons(
-        group = 'monsanto', 
-        data = monsanto, 
-        color = 'red', 
-        weight = 2, 
-        fill = 'red', 
-        fillOpacity = 0.2
+        group = 'monsanto',
+        data = monsanto,
+        color = 'red',
+        weight = 3,
+        fill = NA,
+        fillOpacity = 0.10
+      ) %>%
+      addPolygons(
+        group = 'monsanto-storage', 
+        data = monsanto_storage,
+        color = '#8D7515', 
+        weight = 2.5, 
+        fill = '#8D7515', 
+        fillOpacity = 0.8,
+        label = 'Former storage facility'
       ) %>% 
       addMarkers(
         layerId = 'monsanto', 
-        data = st_centroid(monsanto), 
+        lng = -90.16982, 
+        lat = 38.59643, 
+        # data = st_centroid(monsanto), 
         label = 'Monsanto', 
         labelOptions = labelOptions(noHide = T)
       )
@@ -279,7 +294,32 @@ server <- function(input, output, session) {
   # 
   #   
   # })
-
+  
+  
+  #### Windrose modal ----------------------------------------------------------
+  observe({
+    if(input$windrose) {
+      showModal(modalDialog(
+        tags$img(src = 'www/windrose.png',
+                 alt = 'Windrose from Diagram 3 of US EPA (2011) archives'),
+        tags$br(),
+        tags$p(
+          'Windrose was constructed by RME with five-year surface meteorological data from the  
+          St. Louis Lambert Field Airport (Station ID: 13994) and upper air meteorological data
+          from the Salem, Illinois Airport station (Station ID: 3879).'
+        ), 
+        easyClose = F,
+        footer = tagList(actionButton('close', 'Close'))
+      ))
+    }
+    
+  })
+  
+  observeEvent(input$close, {
+    removeModal()
+    shinyjs::reset('windrose')
+  })
+  
 
   ## DATA TABLE ----------------------------------------------------------------
   output$table <- DT::renderDataTable({ 
@@ -305,4 +345,6 @@ server <- function(input, output, session) {
         searching = F))
   }) 
   
+  
+
 }

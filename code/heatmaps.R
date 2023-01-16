@@ -12,13 +12,8 @@ ggplot(df %>% filter(str_detect(analyte, 'Total')), aes(x = lon, y = lat)) +
   theme_void()
 
 totals <- df %>% filter(str_detect(analyte, 'Total')) 
-total_pcbs <- totals %>% 
-  group_by(parcelnumb, geoid, city, county, lat, lon, lab, units, sampling_d) %>% 
-  summarize(analyte = 'Total PCBs', 
-            est_conc = sum(est_conc)) %>% 
-  ungroup()
-totals <- totals %>% bind_rows(total_pcbs) %>% arrange(parcelnumb, n_cl)
-totals %>% group_by(analyte) %>% count
+
+totals %>% group_by(n_cl, analyte) %>% count
 
 # Create raster
 # Ideally, this can be done using marmap to get bathymetric grids but I'm unable to do this on my computer. 
@@ -67,7 +62,7 @@ end <- Sys.time()
 print(end-start)
 
 # East St. Louis boundaries from TIGRIS shape files
-esl <- tigris::places('Illinois') %>%
+esl <- tigris::places('Illinois', cb = T) %>%
   tigris::filter_place('East St. Louis') %>% 
   rmapshaper::ms_dissolve() %>% 
   sf::st_transform('EPSG:4326')

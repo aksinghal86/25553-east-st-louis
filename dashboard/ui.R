@@ -56,8 +56,11 @@ ui <- navbarPage(
                    choices = c('Map', 'Terrain', 'Satellite'), 
                    selected = 'Map', 
                    inline = T),
-      selectizeInput('mapAnalyteGroup', label = NULL, choices = c('Select congener group' = '', total_analytes), selected = 'Total PCBs'),
+      selectizeInput('mapAnalyteGroup', label = NULL, 
+                     choices = c('Select congener group' = '', total_analytes), 
+                     selected = 'Total PCBs'),
       shinyWidgets::switchInput('logtransform', 'Log-transform', value = T, size = 'small', labelWidth = '150px'),
+      shinyWidgets::switchInput('windrose', 'Windrose', value = F, size = 'small', labelWidth = '150px'),
       # shinyWidgets::switchInput('showHeatmap', 'Show heatmap', value = T,  size = 'small', labelWidth = '150px')
     ),
     
@@ -66,7 +69,9 @@ ui <- navbarPage(
       'input.mapAnalyteGroup != ""',
       absolutePanel(
         id = 'sliderPanel', draggable = F, fixed = T, 
-        sliderInput('threshold', 'Concentration threshold', min = 0, max = 23000, round = T, sep = '', value = 0, width = '25vw')
+        sliderInput('threshold', tags$b('Concentration threshold (ppb)'), 
+                    min = 0, max = 23000, round = T, sep = '', value = 0, 
+                    width = '25vw')
       )
     ), 
     
@@ -121,5 +126,11 @@ ui <- navbarPage(
           'Select PCB congener group to populate table!'),
     
     DT::dataTableOutput('table', width = '100%')
-  )
+  ), 
+  
+  
+  
+  tabPanel( 
+    'Supporting Info', icon = icon('circle-info'), 
+    shiny::includeMarkdown('www/Supporting Info.md'))
 )

@@ -14,14 +14,16 @@ shinyOptions(cache = cachem::cache_disk("./e-stl-dashboard-cache"))
 
 
 # Data files
-sfdf <- st_read('data/gis/all-data-with-geos.shp') %>% 
+sfdf <- st_read('data/gis/all-data-with-geos.shp', quiet = T) %>% 
   mutate_at(c("lat", "lon"), as.numeric) 
 df <- st_drop_geometry(sfdf) 
 totals <- df %>% 
   filter(str_detect(analyte, 'Total'))
 
 # Plant boundary from Gonzalez et al. (2010) paper. https://www.researchgate.net/publication/266902787
-monsanto <- st_read('data/gis/monsanto.kml') %>% st_zm()
+monsanto <- st_read('data/gis/monsanto.kml', quiet = T) %>% st_zm()
+st_agr(monsanto) <- 'constant' # to suppress st_centroid warning later
+monsanto_storage <- st_read('data/gis/monsanto-storage.kml', quiet = T) %>% st_zm()
 # cerro_copper <- st_read('data/gis/cerro-copper.kml') %>% st_zm()
 
 
