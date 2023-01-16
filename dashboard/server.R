@@ -300,10 +300,14 @@ server <- function(input, output, session) {
   observe({
     if(input$windrose) {
       showModal(modalDialog(
-        tags$img(src = 'www/windrose.png',
-                 alt = 'Windrose from Diagram 3 of US EPA (2011) archives'),
+        tags$img(src = 'windrose.png',
+                 alt = 'Windrose from Diagram 3 of US EPA (2011) archives', 
+                 width = '80%'),
         tags$br(),
         tags$p(
+          'Figure from Diagram 3 of US EPA (2011) archives. Original figure from report produced by RME.
+          Winds are predominantly southerly winds in the region, while sometimes also blowing from the west.', 
+          br(), br(), 
           'Windrose was constructed by RME with five-year surface meteorological data from the  
           St. Louis Lambert Field Airport (Station ID: 13994) and upper air meteorological data
           from the Salem, Illinois Airport station (Station ID: 3879).'
