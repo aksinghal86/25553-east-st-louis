@@ -24,6 +24,7 @@ totals <- df %>%
 monsanto <- st_read('data/gis/monsanto.kml', quiet = T) %>% st_zm()
 st_agr(monsanto) <- 'constant' # to suppress st_centroid warning later
 monsanto_storage <- st_read('data/gis/monsanto-storage.kml', quiet = T) %>% st_zm()
+monsanto_incin <- st_read('data/gis/monsanto-incinerator.kml', quiet = T) %>% st_zm()
 # cerro_copper <- st_read('data/gis/cerro-copper.kml') %>% st_zm()
 
 

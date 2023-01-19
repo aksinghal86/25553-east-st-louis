@@ -162,17 +162,26 @@ server <- function(input, output, session) {
       addPolygons(
         group = 'monsanto-storage', 
         data = monsanto_storage,
-        color = '#8D7515', 
+        color = '#c12c2c', 
         weight = 2.5, 
-        fill = '#8D7515', 
+        fill = '#c12c2c', 
         fillOpacity = 0.8,
-        label = 'Former storage facility'
+        label = 'Former PCB storage facility'
+      ) %>% 
+      addPolygons(
+        group = 'monsanto-incinerator', 
+        data = monsanto_incin,
+        color = '#c1522c', 
+        weight = 2.5, 
+        fill = '#c1522c', 
+        fillOpacity = 0.8,
+        label = 'Former PCB incinerator'
       ) %>% 
       addMarkers(
         layerId = 'monsanto', 
-        lng = -90.16982, 
-        lat = 38.59643, 
-        # data = st_centroid(monsanto), 
+        # lng = -90.16982, 
+        # lat = 38.59643, 
+        data = st_centroid(monsanto),
         label = 'Monsanto', 
         labelOptions = labelOptions(noHide = T)
       )

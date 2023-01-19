@@ -38,7 +38,7 @@ null
 
 #### NN --------------------------------------------
 
-# Nearest neighboars interpolation
+# Nearest neighbors interpolation
 # Using 25 neighbors (~10% of the parcels) and setting 'inverse distance power' (idp) to zero so 
 # that all neighbors are equally weighted
 
