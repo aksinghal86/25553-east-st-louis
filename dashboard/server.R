@@ -308,7 +308,7 @@ server <- function(input, output, session) {
   #### Windrose modal ----------------------------------------------------------
   observe({
     if(input$windrose) {
-      showModal(modalDialog(
+      showModal(shinyjqui::draggableModalDialog(
         tags$img(src = 'windrose.png',
                  alt = 'Windrose from Diagram 3 of US EPA (2011) archives', 
                  width = '80%'),
