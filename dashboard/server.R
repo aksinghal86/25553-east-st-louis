@@ -157,7 +157,7 @@ server <- function(input, output, session) {
         color = 'red',
         weight = 3,
         fill = NA,
-        fillOpacity = 0.10
+        fillOpacity = 0.10,
       ) %>%
       addPolygons(
         group = 'monsanto-storage', 
@@ -166,7 +166,8 @@ server <- function(input, output, session) {
         weight = 2.5, 
         fill = '#c12c2c', 
         fillOpacity = 0.8,
-        label = 'Former PCB storage facility'
+        label = 'Former PCB manufacturing facility', 
+        labelOptions = labelOptions(textsize = '12px')
       ) %>% 
       addPolygons(
         group = 'monsanto-incinerator', 
@@ -175,7 +176,8 @@ server <- function(input, output, session) {
         weight = 2.5, 
         fill = '#c1522c', 
         fillOpacity = 0.8,
-        label = 'Former PCB incinerator'
+        label = 'Former PCB incinerator', 
+        labelOptions = labelOptions(textsize = '12px')
       ) %>% 
       addMarkers(
         layerId = 'monsanto', 
@@ -183,7 +185,7 @@ server <- function(input, output, session) {
         # lat = 38.59643, 
         data = st_centroid(monsanto),
         label = 'Monsanto', 
-        labelOptions = labelOptions(noHide = T)
+        labelOptions = labelOptions(noHide = F, textsize = '12px')
       )
   })
 

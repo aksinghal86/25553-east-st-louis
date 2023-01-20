@@ -47,7 +47,7 @@ ui <- navbarPage(
     
     #### Map Navigation Panel ####
     absolutePanel(
-      id = 'controls', draggable = T, 
+      id = 'controls', draggable = F, fixed = T, 
       left = 'auto', right = 20, bottom = 'auto', width = 'auto', height = 'auto', 
       
       h3('Map Tools', icon('map')), 
@@ -59,8 +59,8 @@ ui <- navbarPage(
       selectizeInput('mapAnalyteGroup', label = NULL, 
                      choices = c('Select congener group' = '', total_analytes), 
                      selected = 'Total PCBs'),
-      shinyWidgets::switchInput('logtransform', 'Log-transform', value = T, size = 'small', labelWidth = '150px'),
-      shinyWidgets::switchInput('windrose', 'Windrose', value = F, size = 'small', labelWidth = '150px'),
+      shinyWidgets::switchInput('logtransform', 'Log-transform', value = T, size = 'normal', labelWidth = '150px'),
+      shinyWidgets::switchInput('windrose', 'Windrose', value = F, size = 'normal', labelWidth = '150px'),
       # shinyWidgets::switchInput('showHeatmap', 'Show heatmap', value = T,  size = 'small', labelWidth = '150px')
     ),
     
