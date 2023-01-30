@@ -160,6 +160,15 @@ server <- function(input, output, session) {
         fillOpacity = 0.10,
       ) %>%
       addPolygons(
+        group = 'esl', 
+        data = esl, 
+        fillOpacity = 0, 
+        weight = 2.5, 
+        dashArray = "5,10", 
+        label = 'East St. Louis City Boundary',
+        labelOptions = labelOptions(textsize = '12px')
+      ) %>% 
+      addPolygons(
         group = 'monsanto-storage', 
         data = monsanto_storage,
         color = '#c12c2c', 

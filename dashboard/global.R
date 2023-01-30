@@ -20,6 +20,8 @@ df <- st_drop_geometry(sfdf)
 totals <- df %>% 
   filter(str_detect(analyte, 'Total'))
 
+esl <- st_read('data/esl.kml')
+
 # Plant boundary from Gonzalez et al. (2010) paper. https://www.researchgate.net/publication/266902787
 monsanto <- st_read('data/gis/monsanto.kml', quiet = T) %>% st_zm()
 st_agr(monsanto) <- 'constant' # to suppress st_centroid warning later
