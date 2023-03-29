@@ -8,6 +8,7 @@ library(sf)
 # library(mapdeck)
 library(leaflet)
 library(reactable)
+library(ggiraph)
 
 # shinyOptions(cache = cachem::cache_disk(file.path(dirname(tempdir()), "esl-dashboard-cache")))
 shinyOptions(cache = cachem::cache_disk("./e-stl-dashboard-cache"))

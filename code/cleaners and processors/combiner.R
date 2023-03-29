@@ -5,15 +5,71 @@ cape <- read_csv('data/cape-fear.csv')
 
 # Basic formatting and standardization
 # DL/2 for NDs
-alpha <- alpha %>% 
+alphax <- alpha %>% 
   rename(lab_id = lab_sample_id, 
          sample_matrix = sample_type) %>% 
   mutate(lab = 'Alpha', 
          sampling_date = lubridate::mdy(sampling_date), 
          est_conc = ifelse(detected, conc, conc/2), 
-         est_method = 'Half DL')
+         est_method = 'Half DL', 
+         old_analyte = analyte, 
+         analyte = str_replace(str_replace(old_analyte, '^.+\\(', ''), '\\)$', ''))
 
-cape <- cape %>% 
+
+
+# QC to check that all analytes with coeluters ALWAYS coelute. 
+# pct should always be 1, 0 or NA. (either always elutes, never elutes, or NA)
+# if pct == 1, conc === 0. conc should always be zero if the chemical has a comment that it coelutes.  
+cape |> 
+  filter(!str_detect(analyte, 'Total')) |>
+  group_by(qq = str_detect(qualifier, 'C[0-9].+')) |> 
+  summarize(pct = sum(qq)/n(), 
+            conc = sum(conc, na.rm = T)) 
+
+# 209 PCB congeners analyzed by Cape Fear per sample, which is the exact possible number of PCB congeners
+# 11 possible totals
+cape |> filter(!str_detect(analyte, 'Total')) |> group_by(sample_id) |> count()
+
+# Of the 209 congeners, 43 coelute and always have a zero. This leave a total of 166 possible results per sample. 
+cape |> 
+  filter(!str_detect(analyte, 'Total')) |> 
+  group_by(analyte, qq = str_detect(qualifier, 'C[0-9].+')) |> 
+  count() |> 
+  filter(qq) |> 
+  ungroup() |> 
+  count()
+
+
+# Some analytes coelute in which case Cape Fear assigns it a concentration of zero
+# and puts a comment in the for 'Cnum', were num is the congener that it coelutes with. 
+# Objective is to standardize with Alpha, which puts all coeluters in one row 
+# separated by a '/'.
+cape_coeluters <-  cape |> 
+  filter(!str_detect(analyte, 'Total')) |> 
+  mutate(analyte = paste0('PCB-', str_replace(analyte, '\\-.+$', '')), 
+         coeluters = case_when(str_detect(qualifier, 'C[0-9].+') ~ str_replace(qualifier, 'C', 'PCB-'),
+                               TRUE ~ analyte)) |> 
+  ungroup() |> 
+  group_by(coeluters) |> 
+  summarize(analyte = paste0(unique(analyte), collapse = '/'), 
+            casrn = paste0(unique(casrn), collapse = '/'))
+
+
+capex <- cape |>  
+  filter(!str_detect(analyte, 'Total')) |>
+  select(-casrn) |> 
+  mutate(old_analyte = analyte, 
+         analyte = paste0('PCB-', str_replace(old_analyte, '\\-.+$', ''))) |> 
+  left_join(cape_coeluters, by = c('analyte' = 'coeluters')) |> 
+  filter(!is.na(analyte.y)) |> 
+  mutate(analyte = analyte.y) |> 
+  select(-analyte.y) |> 
+  # will eventually be dropped but keep for now for QC
+  bind_rows(cape |> filter(str_detect(analyte, 'Total')))
+
+capex |> group_by(qualifier) |> count()
+
+capey <- capex |> 
   rename(location = sample_id, 
          sampling_date = collection_date) %>% 
   mutate(lab = 'Cape Fear', 
@@ -24,8 +80,10 @@ cape <- cape %>%
   mutate_at(c('dl', 'rl', 'conc', 'est_conc'), ~ .x/1e3) %>%
   mutate(units = 'ug/kg')
 
-df <- alpha %>% 
-  bind_rows(cape) %>% 
+capey |> filter(!str_detect(analyte, 'Total')) |> group_by(location) |> count()
+
+df <- alphax %>% 
+  bind_rows(capey) %>% 
   mutate(parcel = str_pad(parcel, 11, 'left', '0'))
 
 write_csv(df, 'data/all-data.csv')
@@ -36,7 +94,7 @@ write_csv(df, 'data/all-data.csv')
 # Labs use 0 for NDs, which is not appropriate. 
 
 # Congener group -- used to calculate totals
-prefixes <- cape %>% 
+prefixes <- capey %>% 
   filter(str_detect(analyte, 'Total')) %>% 
   distinct(analyte) %>% 
   mutate(analyte_prefix = str_squish(str_replace_all(analyte, 'Total|PCBs|PCB', ''))) %>% 
@@ -47,9 +105,9 @@ prefixes <- cape %>%
 
 
 ## Process Cape Fear
-cape2 <- cape %>% 
+cape2 <- capey %>% 
   filter(!str_detect(analyte, 'Total')) %>% # Remove totals provided by lab
-  mutate(abbr = str_replace(str_extract(analyte, '-[:alpha:]{2}'), '-', '')) %>% 
+  mutate(abbr = str_replace(str_extract(old_analyte, '-[:alpha:]{2}'), '-', '')) %>% 
   left_join(prefixes, by = 'abbr') %>% 
   select(-abbr)
 
@@ -83,6 +141,9 @@ cape_by_parcel <- cape_combined %>%
   arrange(parcel, n_cl, analyte)
 cape_by_parcel
 
+# 166 PCBs + 11 totals
+cape_by_parcel |> group_by(sample_ids) |> count()
+
 ## Totals provided by lab 
 # cape_lab_totals <- cape %>% 
 #   filter(str_detect(analyte, 'Total')) %>% 
@@ -91,8 +152,8 @@ cape_by_parcel
 
 
 ## Do the same for Alpha
-alpha2 <- alpha %>% 
-  mutate(abbr = str_replace(str_extract(analyte, '-[:alpha:]{2}'), '-', ''), 
+alpha2 <- alphax %>% 
+  mutate(abbr = str_replace(str_extract(old_analyte, '-[:alpha:]{2}'), '-', ''), 
          abbr = ifelse(is.na(abbr), 'De', abbr)) %>%
   left_join(prefixes, by = 'abbr') %>% 
   select(-abbr) 
@@ -134,12 +195,15 @@ df_by_parcel <- alpha_by_parcel %>%
   ungroup()
 
 write_csv(df_by_parcel, 'data/trimmed-data-by-parcel.csv')
+rm(list=ls())
+
 
 ## Add GIS geometry to each parcel (purchased from ReGRID)
 library(terra)
 
+df_by_parcel <- read_csv('data/trimmed-data-by-parcel.csv') 
 geos <- sf::st_read('data/gis/il_st_clair.shp') %>% 
-  select(geoid, parcelnumb, city, county, lat, lon) %>%
+  select(geoid, parcelnumb, city, county, lat, lon, area_sqft = ll_gissqft, area_acre = ll_gisacre) %>%
   filter(city == 'east-st-louis') %>% 
   group_by(parcelnumb) %>% 
   slice(1) # for some reason there are duplicates in the shape file
@@ -157,3 +221,4 @@ df_by_parcel %>%
 
 writeVector(sfdf, 'data/gis/all-data-with-geos.shp', overwrite = T)
 writeVector(sfdf, 'dashboard/data/gis/all-data-with-geos.shp', overwrite = T)
+rm(list=ls())

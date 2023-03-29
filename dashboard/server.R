@@ -13,7 +13,9 @@ server <- function(input, output, session) {
       rownames_to_column(var = 'rank') %>%
       mutate(results = case_when(input$logtransform ~ log(est_conc), TRUE ~ est_conc),
              tooltip = paste0('Parcel: ', parcelnumb, '<br>',
-                              input$mapAnalyteGroup, ': ', round(est_conc), ' ppb', '<br>',
+                              'Parcel area: ', scales::comma(area_sqft), ' sq ft', '<br>', 
+                              '<div style = "text-align: center;">-----------------------</div>', 
+                              input$mapAnalyteGroup, ': ', scales::comma(round(est_conc)), ' ppb', '<br>',
                               'Rank: ', rank, '<br>', 
                               'Sample ID(s): ', sample_ids))
   }) %>% 
@@ -43,6 +45,11 @@ server <- function(input, output, session) {
     updateSliderInput(session, 'threshold', max = signif(max(map_selected_data()$est_conc), 2), value = 0)  
   })
   
+  
+  observeEvent(input$setThreshold, {
+    updateSliderInput(session, 'threshold', value = 1000)
+  })
+  
   ## Dynamically update information panel heading based on user input
   observe({
     heading <- if (input$mapAnalyteGroup == '') { 
@@ -65,7 +72,7 @@ server <- function(input, output, session) {
       mutate(highlight = case_when(analyte == input$mapAnalyteGroup ~ '#bf7e65'))
 
     ggplot(plotdata, aes(x = reorder(analyte_pr, n_cl), y = detected)) + 
-      geom_point(aes(color = highlight), #color = if( input$mapAnalyteGroup == 'Total PCBs') NULL else highlight), 
+      geom_point_interactive(aes(tooltip = detected, data_id = analyte_pr, color = highlight), #color = if( input$mapAnalyteGroup == 'Total PCBs') NULL else highlight), 
                  alpha = 0.85, size = 2) +
       geom_segment(aes(xend = analyte_pr, y = 0, yend = detected, 
                        color = highlight), #color = if( input$mapAnalyteGroup == 'Total PCBs') NULL else highlight), 
@@ -81,6 +88,7 @@ server <- function(input, output, session) {
             panel.grid = element_blank(),
             text = element_text(size = 12),
             legend.position = 'none')
+
   }) 
   
   #### Density plot ------------------------------------------------------------
@@ -238,7 +246,7 @@ server <- function(input, output, session) {
         data = heatmap(),
         weight = 0.2,
         fillColor = ~ pal(fillby),
-        fillOpacity = 0.8,
+        fillOpacity = ~ input$heatmapTransparency,
         smoothFactor = 0.8
       ) %>%
       addLegend(
@@ -255,14 +263,18 @@ server <- function(input, output, session) {
   
   observe({
     req(input$mapAnalyteGroup)
+    
+    
+    parceldata_sf <- map_selected_data_sf() |> 
+        filter(est_conc > input$threshold) 
+    
+    if (nrow(parceldata_sf) == 0) return(NULL)
+    # 
+    # parceldata_sf <- map_selected_data_sf() %>%
+    #   mutate(fill_opacity = case_when(est_conc > input$threshold ~ 0.6, TRUE ~ 0),
+    #          weight = case_when(est_conc > input$threshold ~ 0.8, TRUE ~ 0.05),
+    #          opacity = case_when(est_conc > input$threshold ~ 0.5, TRUE ~ 0))
 
-    parceldata_sf <- map_selected_data_sf() %>% 
-      mutate(fill_opacity = case_when(est_conc > input$threshold ~ 0.6, TRUE ~ 0), 
-             weight = case_when(est_conc > input$threshold ~ 0.8, TRUE ~ 0.05), 
-             opacity = case_when(est_conc > input$threshold ~ 0.5, TRUE ~ 0))
-    
-  
-    
     pal2 <- colorNumeric('YlOrRd', map_selected_data_sf()$results)
     
     ## In case we want to superimpose an x mark on top of parcels (see below)
@@ -278,10 +290,12 @@ server <- function(input, output, session) {
         group = 'parcelConc',
         data = parceldata_sf,
         color = 'black',
-        weight = ~weight,
+        weight = 0.8, 
+        # weight = ~weight,
         opacity = 0.5,
         fillColor = ~ pal2(results),
-        fillOpacity = ~fill_opacity,
+        fillOpacity = ~ input$heatmapTransparency - 0.2, 
+        # fillOpacity = ~fill_opacity,
         label = ~ lapply(tooltip, HTML),
         labelOptions = labelOptions(
           textsize = '12px', className = 'leafletLabel',
@@ -300,7 +314,6 @@ server <- function(input, output, session) {
     # )
 
   })
-
 
   ## MAP TOOLS PANEL  -----------------------------------------------------------
 
@@ -346,29 +359,142 @@ server <- function(input, output, session) {
   
 
   ## DATA TABLE ----------------------------------------------------------------
-  output$table <- DT::renderDataTable({ 
-    tabledata <- df %>% 
-      filter(analyte_pr == input$tableAnalyteGroup, 
-             !str_detect(analyte, 'Total'), 
-             est_conc > 0) %>% 
-      select(parcelnumb, analyte, lab, detected, est_conc) %>% 
-      mutate(detected = as.logical(detected))
+  output$table <- renderReactable({
+    tabledata <- df |> 
+      # mutate(analyte_pr = factor(analyte_pr, levels = c('Mono', 'Di', 'Tri', 'Tetra', 'Penta', 'Hexa', 'Hepta', 'Octa', 'Nona', 'Deca', 'Total'))) |> 
+      select(-geoid, -city, -county, -lat, -lon, -area_acre, -units, -sampling_d, -est_method, -sample_ids, -lab_ids) |> 
+      filter(!str_detect(analyte, 'Total')) 
     
-    DT::datatable(
-      tabledata,
-      colnames = c('Parcel', 'Lab', 'Analyte', 'Detected', 'Concentration (ppb)'),
-      class = 'compact',
-      filter = 'top',
-      options = list(
-        autoWidth = T, 
-        columnDefs = list(
-          list(className = 'dt-center', targets = c(1, 3, 4)), 
-          list(width = '80px', targets = c(3, 4, 5)),
-          list(width = '150px', targets = 1)),
-        pageLength = 20,
-        searching = F))
-  }) 
+    reactable(
+      tabledata, 
+      
+      # striped = T, 
+      showSortable = T, 
+      filterable = T, 
+      bordered = T,
+      highlight = T,
+      compact = T, 
+      pagination = T,
+      showPageSizeOptions = T, 
+      pageSizeOptions = c(10, 25, 50, 100), 
+      defaultPageSize = 10, 
+      
+      # defaultSorted = c('analyte_pr', 'analyte'), 
+      defaultColDef = colDef(
+        headerClass = 'header', 
+        # footerClass = 'footer', 
+        align = 'left'
+      ), 
+      
+      rowClass = JS('function (rowInfo) { 
+        let detected = rowInfo.values["detected"]
+        
+        if (detected == 0) { 
+          return "not-detected"
+        } 
+      }'),
+      
+      groupBy = c("parcelnumb", "analyte_pr"), 
+      
+      columns = list(
+        analyte_pr = colDef(
+          'Homolog'  
+        ), 
+        
+        n_cl = colDef(
+          show = F
+        ), 
+        
+        parcelnumb = colDef(
+          'Parcel', 
+          minWidth = 125
+        ), 
+        
+        area_sqft = colDef(
+          'Parcel area (sq. ft.)',
+          aggregate = 'mean', 
+          filterable = F
+        ), 
+        
+        lab = colDef(
+          'Lab'
+        ), 
+        
+        analyte = colDef(
+          'Analyte'
+        ), 
+        
+        est_conc = colDef(
+          aggregate = 'sum',
+          'Concentration (ppb)', 
+          align = 'right', 
+          format = colFormat(digits = 1)
+        ), 
+        
+        detected = colDef(
+          'Detected',
+          filterable = F, 
+          align = 'right', 
+          aggregate = JS('function (values, rows) { 
+            let totalAnalytes = 0
+            let totalDetected = 0
+            rows.forEach(function(row) {
+              totalDetected += row["detected"]
+              totalAnalytes += 1
+            })
+            let detectedPct = totalDetected/totalAnalytes * 100
+            return detectedPct.toFixed(1) + "%"
+          }'), 
+          
+          cell = JS('function (colInfo) { 
+            if (colInfo.value == 1) { 
+              return "\u2713"
+            }
+          }'), 
+          style = JS('function(rowInfo) { 
+            const value = rowInfo.values["detected"]
+            // let color, background, fontWeight
+            
+            if (value == 1) { 
+              return { color: "#111", background: "#63c1ab", fontWeight: "bold" }
+            }
+            
+            
+          }'),
+          maxWidth = 100, 
+        )
+      )
+      
+    )
+  })
   
+  observeEvent(input$expandTable, { 
+    updateReactable('table', expanded = T)  
+  })
+  # 
+  # output$table <- DT::renderDataTable({ 
+  #   tabledata <- df %>% 
+  #     filter(analyte_pr == input$tableAnalyteGroup, 
+  #            !str_detect(analyte, 'Total'), 
+  #            est_conc > 0) %>% 
+  #     select(parcelnumb, analyte, lab, detected, est_conc) %>% 
+  #     mutate(detected = as.logical(detected))
+  #   
+  #   DT::datatable(
+  #     tabledata,
+  #     colnames = c('Parcel', 'Lab', 'Analyte', 'Detected', 'Concentration (ppb)'),
+  #     class = 'compact',
+  #     filter = 'top',
+  #     options = list(
+  #       autoWidth = T, 
+  #       columnDefs = list(
+  #         list(className = 'dt-center', targets = c(1, 3, 4)), 
+  #         list(width = '80px', targets = c(3, 4, 5)),
+  #         list(width = '150px', targets = 1)),
+  #       pageLength = 20,
+  #       searching = F))
+  # }) 
+  # 
   
 
 }

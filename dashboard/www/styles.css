@@ -109,3 +109,11 @@ transition: opacity 500ms 1s;
   margin-bottom: 30px;
   font-size: 12px;
 }
+
+.not-detected {
+  color: #9f9f9f;
+}
+
+.header { 
+  text-align: center;
+}

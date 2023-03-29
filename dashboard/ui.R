@@ -1,4 +1,13 @@
 total_analytes <- totals %>% arrange(n_cl) %>% pull(analyte) %>% unique()
+csvDownloadButton <- function(id, filename = "data.csv", label = "Download as CSV") {
+  tags$button(
+    tagList(icon("download"), label),
+    onclick = sprintf("Reactable.downloadDataCSV('%s', '%s')", id, filename), 
+    class = 'btn btn-default', 
+    style = 'float: right;'
+  )
+}
+
 
 ui <- navbarPage(
   title = 'East St. Louis PCB Sampling Dashboard', 
@@ -57,10 +66,13 @@ ui <- navbarPage(
                    selected = 'Map', 
                    inline = T),
       selectizeInput('mapAnalyteGroup', label = NULL, 
-                     choices = c('Select congener group' = '', total_analytes), 
+                     choices = c('Select homolog group' = '', total_analytes), 
                      selected = 'Total PCBs'),
+      sliderInput('heatmapTransparency', tags$b('Heatmap transparency'), min = 0, max = 1, step = 0.01, ticks = F, value = 0.8),
+      # shinyWidgets::sliderTextInput('heatmapTransparency', tags$b('Heatmap transparency'), choices = seq(0, 1, 0.01), grid = F, selected = 0.8),
       shinyWidgets::switchInput('logtransform', 'Log-transform', value = T, size = 'normal', labelWidth = '150px'),
       shinyWidgets::switchInput('windrose', 'Windrose', value = F, size = 'normal', labelWidth = '150px'),
+      
       # shinyWidgets::switchInput('showHeatmap', 'Show heatmap', value = T,  size = 'small', labelWidth = '150px')
     ),
     
@@ -70,9 +82,12 @@ ui <- navbarPage(
       absolutePanel(
         id = 'sliderPanel', draggable = F, fixed = T, 
         sliderInput('threshold', tags$b('Concentration threshold (ppb)'), 
-                    min = 0, max = 23000, round = T, sep = '', value = 0, 
-                    width = '25vw')
-      )
+                    min = 0, max = 23000, round = T, sep = ',', value = 0, step = 100,
+                    width = '25vw'), 
+        actionButton('setThreshold', 'Set slider to 1,000 ppb', icon = icon('wrench'),  
+                     style = 'font-size: 12px; ')
+      ), 
+      
     ), 
     
     #### Information panel ####
@@ -91,7 +106,7 @@ ui <- navbarPage(
          br(), br(),
          'Refer to the', em("Data Explorer"), 'tab in the navigation panel for the raw data.'
       ),
-        plotOutput('detectionPlot', height = '180px'), 
+      plotOutput('detectionPlot', height = '180px'), 
       plotOutput('densityPlot', height = '125px'),
       div(tableOutput('mapTable'), style = 'font-size: 12px;')
     )
@@ -102,30 +117,12 @@ ui <- navbarPage(
   tabPanel(
     'Data explorer', icon = icon('table'),
     id = 'data-explorer', 
-    style = 'width: 65%; margin-left: auto; margin-right: auto; ',
-    div(style = 'display: inline-block;', 
-         selectizeInput(
-           'tableAnalyteGroup', label = NULL,
-           choices = c('Select analyte group' = '', df %>% filter(!is.na(n_cl)) %>% arrange(n_cl) %>% pull(analyte_pr) %>% unique())
-           )
-        ),
-
-     div(style = 'font-size: 50px; 
-           display: inline-block; 
-           vertical-align: top; 
-           color: #31708f; 
-           padding: 0px; 
-           margin-top: -22px;',  
-         HTML('&#8592;')
-         ), 
-     div(style = 'display: inline-block; 
-            font-size: 16px; 
-            vertical-align: middle; 
-            color: #31708f; 
-            margin-bottom: 22px',  
-          'Select PCB congener group to populate table!'),
-    
-    DT::dataTableOutput('table', width = '100%')
+     # style = 'width: 95%; margin-left: auto; margin-right: auto; ',
+    actionButton('expandTable', 'Show all rows'),
+    csvDownloadButton('table', filename = 'estl-pcb-data.csv'),
+  
+    # DT::dataTableOutput('table', width = '100%')
+    div(reactableOutput('table'), style = 'margin-top: 15px;')
   ), 
   
   
