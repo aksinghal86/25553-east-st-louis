@@ -6,6 +6,8 @@ data/
 dashboard/assets/
 dashboard/data/
 
+output/
+
 # History files
 .Rhistory
 .Rapp.history
