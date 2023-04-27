@@ -189,19 +189,11 @@ alpha_by_parcel <- alpha_combined %>%
   arrange(parcel, n_cl, analyte)
 alpha_by_parcel 
 
-data_for_production <- cape_combined |> 
-  bind_rows(alpha_combined) |> 
-  mutate(parcel = str_pad(parcel, 11, 'left', '0')) |> 
-  arrange(parcel, analyte_prefix, analyte) |> 
-  select(-analyte_group, -sample_matrix, -qualifier, -rl, -dl, -sheet, -old_analyte) |> 
-  rename(homolog = analyte_prefix)
-
 df_by_parcel <- alpha_by_parcel %>% 
   bind_rows(cape_by_parcel) %>% 
   mutate(parcel = str_pad(parcel, 11, 'left', '0')) %>% 
   ungroup()
 
-write_csv(data_for_production, 'data/all-data-clean-for-production.csv')
 write_csv(df_by_parcel, 'data/trimmed-data-by-parcel.csv')
 rm(list=ls())
 
