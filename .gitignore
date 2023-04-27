@@ -1,6 +1,7 @@
 # cache
 dashboard/e-stl-dashboard-cache/
-
+rosm.cache/
+output/
 
 data/
 dashboard/assets/
