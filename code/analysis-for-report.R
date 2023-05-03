@@ -286,7 +286,7 @@ p2
 ggsave(plot = p2, 'output/concentation-boxplot-total-pcbs-only.png', height = 6, width = 8, units = 'in') 
 
 ## Lognormal distribution + boxplot for total PCBs only
-# @Laura Perhaps these are better as individual plots. But please make sure that the boxplot 
+# TODO: @Laura Perhaps these are better as individual plots. But please make sure that the boxplot 
 # color scheme is consistent with what you use in the maps. 
 p1 + p2
 
