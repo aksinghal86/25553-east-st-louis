@@ -7,39 +7,34 @@ library(ggspatial)
 library(flextable)
 library(patchwork)
 
+sfdf <- terra::vect('data/gis/all-data-for-production-with-geos.shp') |> 
+  sf::st_as_sf() |> 
+  filter(!str_detect(parcelnumb, 'ROW|RIGHT OF WAY')) |> 
+  mutate(conc = conc/1000, 
+         units = 'ppm') |> 
+  select(-est_conc, -est_method)
+sfdf_by_parcel <- terra::vect('data/gis/data-by-parcel.shp') |> 
+  sf::st_as_sf() |> 
+  filter(!str_detect(parcelnumb, 'ROW|RIGHT OF WAY')) |> 
+  mutate(conc = conc/1000, 
+         units = 'ppm') |> 
+  select(-est_conc, -est_method)
+sf_total_pcbs <- sfdf_by_parcel |> filter(analyte == "Total PCBs")
 
 df <- read_csv('data/all-data-clean-for-production.csv') |> 
   filter(!str_detect(parcel, 'ROW|RIGHT OF WAY')) |> 
   mutate(conc = conc/1000, 
-         units = 'ppm')
+         units = 'ppm') |> 
+  select(-est_conc, -est_method)
+df_by_parcel <- read_csv('data/trimmed-data-by-parcel.csv') |> 
+  filter(!str_detect(parcel, 'ROW|RIGHT OF WAY')) |> 
+  mutate(conc = conc/1000, 
+         units = 'ppm') |> 
+  select(-est_conc, -est_method)
+totals <- df_by_parcel |> filter(str_detect(analyte, 'Total'))
+total_pcbs <- df_by_parcel |> filter(analyte == 'Total PCBs')
+homologs <- totals |> filter(!is.na(n_cl))
 
-homologs <- df |> 
-  filter(!str_detect(analyte, 'Total')) |> 
-  mutate(detected = as.logical(detected)) |>
-  filter(detected) |> 
-  group_by(lab, parcel, location, lab_id, n_cl, homolog, units) |> 
-  summarize(conc = sum(conc)) |> 
-  ungroup()
-total_pcbs <- homologs |> 
-  group_by(lab, parcel, location, lab_id, units) |> 
-  summarize(conc = sum(conc)) |> 
-  mutate(homolog = 'Total PCBs') |>  
-  ungroup()
-
-totals <- homologs |> bind_rows(total_pcbs) 
-
-# Shape files
-
-### Done on the fly. Unhash if needed but otherwise load the data below. 
-# geos <- sf::st_read('data/gis/il_st_clair.shp') %>% 
-#   select(geoid, parcelnumb, city, county, lat, lon, area_sqft = ll_gissqft, area_acre = ll_gisacre) %>%
-#   filter(city == 'east-st-louis') %>% 
-#   group_by(parcelnumb) %>% 
-#   slice(1)
-# 
-# sf_total_pcbs <- terra::merge(terra::vect(geos), total_pcbs, all.x = F, by.x = 'parcelnumb', by.y = 'parcel', how = 'inner') 
-# terra::writeVector(sf_total_pcbs, 'data/total-pcbs-spatial.shp')
-sf_total_pcbs <- sf::st_as_sf(terra::vect('data/total-pcbs-spatial.shp'))
 esl <- sf::st_read('dashboard/data/esl.kml')
 monsanto <- sf::st_read('dashboard/data/gis/monsanto.kml', quiet = T) %>% sf::st_zm()
 monsanto_storage <- st_read('dashboard/data/gis/monsanto-storage.kml', quiet = T) %>% st_zm()
@@ -85,105 +80,174 @@ ggplot(sf_total_pcbs |> distinct(parcelnumb, .keep_all = T)) +
   )
 ggsave('output/estl-zoomed-in-parcels.png', height = 5, width = 5, units = 'in')
 
-# Map to show parcels with 1 ppm cutoff
-# TODO @Laura: 
-#   note: I did these plots on the fly without much thought so there may be a more efficient way to do this. 
-#   1. PLease modify the color scheme so the difference in the reds is a bit more obvious. 
-#   2. Please create the same maps with the cutoffs of 0.034 ppm and 0.25 ppm. You'll have to choose your own cuts 
-#      but I think it'll be a good idea to retain the 1 ppm cut for the 0.25 ppm map and the 0.25 ppm and 1ppm cut for the 0.034 ppm map. 
-#   3. Consider using a bar plot with pre-defined bins to show the number of parcels per bin (see starter code below)
-total_pcbs <- total_pcbs |> 
-  group_by(parcel) |> 
-  summarize(conc = mean(conc))
 total_pcbs |> 
   filter(conc >= 1) |> 
   count()
 
-total_pcbs <- total_pcbs |> 
-  mutate(breaks = cut(conc, breaks = c(0, 0.50, 0.75, 1, 5, 10, Inf)))
-total_pcbs |> group_by(breaks) |> count()
+# colfunc_reds <- colorRampPalette(c('#f79540', '#fc4f00', '#b22222', '#b71375', '#8b1874', '#581845'))
+colfunc_grays <- colorRampPalette(c('#d6d6d6', '#bdbdbd', '#949494', '#737373', '#4d4d4d', '#262626'))
+# reds <- colfunc_reds(20)
+reds <- viridis::viridis_pal(direction = -1, option = 'F')(25)
+grays <- colfunc_grays(25)
+scales::show_col(reds)
+scales::show_col(grays)
 
-# Bar plot to demonstrate the number of parcels per bin visually
-total_pcbs |> 
-  group_by(breaks) |> 
-  count() |> 
-  ggplot(aes(x = breaks, y = n)) + 
-  geom_col() + 
-  cowplot::theme_cowplot()
+bins_and_colors <- tibble(breaks = cut(total_pcbs$conc, breaks = c(0, 0.034, 0.25, 0.50, 1, 5, 10, Inf))) |>
+  distinct(breaks) |>
+  arrange(breaks) |>
+  mutate(labels = factor(c('<0.034', '0.034 - 0.25', '0.25 - 0.5', '0.5 - 1', '1 - 5', '5 - 10', '>10')),
+         cutoff_1 = factor(c(grays[2], grays[10], grays[16], grays[22], reds[11], reds[16], reds[21])),
+         cutoff_0.25 = factor(c(grays[2], grays[10], reds[6], reds[8], reds[11], reds[16], reds[21])),
+         cutoff_0.034 = factor(c(grays[2], reds[2], reds[6], reds[8], reds[11], reds[16], reds[21])))
 
-sf_total_pcbs <- sf_total_pcbs |> 
-  group_by(parcelnumb) |> 
-  summarize(conc = mean(conc))
-sf_total_pcbs <- sf_total_pcbs |> 
-  mutate(breaks = cut(conc, breaks = c(0, 0.50, 0.75, 1, 5, 10, Inf)), 
-         colors = case_when(
-           conc < 0.50 ~ '#f2f3f4',
-           conc < 0.75 ~ "#bdc3c7", 
-           conc < 1 ~  "#626567", # '#ff5733',
-           conc < 5 ~ '#c70039',
-           conc < 10 ~ '#900c3f',
-           TRUE ~ '#581845'))
+basemap <- function(cutoff = 1) {
+  dfcol <- paste0('cutoff_', cutoff)
+  bc <- bins_and_colors |> select(breaks, labels, colors = dfcol)
 
-ggplot(sf_total_pcbs, aes(fill = colors)) + 
-  annotation_map_tile(type = 'cartolight', zoom = 15) +
-  geom_sf(alpha = 0.75, size = 0.25) +
-  geom_sf(data = esl, fill = NA, color = 'gray') + 
-  geom_sf(data = monsanto, fill = NA, color = 'orange', size = 0.5) +
-  geom_sf(data = monsanto_incin, fill = 'orange', color = NA) + 
-  # scale_fill_gradient(low = 'orange', high = 'red') +
-  scale_fill_identity('Concentration\n(ppm)', 
-                      labels = c('<0.50', '0.50 - 0.75', '0.75 - 1', '1 - 5', '5 - 10', '>10'), 
-                      breaks = c('#f2f3f4', '#bdc3c7', '#626567', '#c70039', '#900c3f', '#581845'), 
-                      guide = 'legend') +
-  # theme(legend.position = 'none') + 
-  coord_sf(xlim = c(-90.172, -90.148), ylim = c(38.595, 38.612), crs = 4326) +
-  annotation_scale(location = "bl", width_hint = 0.2) 
-# annotation_north_arrow(location = "bl", which_north = "true",
-#                        pad_x = unit(0.50, "in"), pad_y = unit(0.25, "in"),
-#                        style = north_arrow_orienteering)
-ggsave('output/map-filled-parcels-zoomed-out.png', height = 6, width = 8, units = 'in') 
+  mapdata <- sf_total_pcbs |>
+    mutate(breaks = cut(conc, breaks = c(0, 0.034, 0.25, 0.50, 1, 5, 10, Inf))) |>
+    left_join(bc, by = 'breaks') |>
+    mutate(labels = factor(labels, levels = bc$labels),
+           colors = factor(colors, levels = bc$colors))
 
+  ggplot(mapdata, aes(fill = colors)) +
+    annotation_map_tile(type = 'cartolight', zoom = 15) +
+    geom_sf(alpha = 0.85, size = 0.25) +
+    geom_sf(data = esl, fill = NA, color = 'gray') +
+    geom_sf(data = monsanto, fill = NA, color = 'orange', size = 0.5) +
+    geom_sf(data = monsanto_incin, fill = 'orange', color = NA) +
+    scale_fill_identity('Concentration\n(ppm)',
+                        labels = bins_and_colors$labels,
+                        guide = 'legend') +
+    coord_sf(xlim = c(-90.172, -90.148), ylim = c(38.595, 38.612), crs = 4326) +
+    annotation_scale(location = "bl", width_hint = 0.2) +
+    cowplot::theme_map()
+  # annotation_north_arrow(location = "bl", which_north = "true",
+  #                        pad_x = unit(0.50, "in"), pad_y = unit(0.25, "in"),
+  #                        style = north_arrow_orienteering)
+}
 
-ggplot(sf_total_pcbs, aes(fill = colors)) + 
-  annotation_map_tile(type = 'cartolight', zoom = 18) +
-  geom_sf(alpha = 0.75, size = 0.25) +
-  # geom_sf(data = esl, fill = NA, color = 'gray') + 
-  # geom_sf(data = monsanto, fill = NA, color = 'orange', size = 0.5) +
-  # geom_sf(data = monsanto_incin, fill = 'orange', color = NA) + 
-  # scale_fill_gradient(low = 'orange', high = 'red') +
-  scale_fill_identity('Concentration\n(ppm)', 
-                      labels = c('<0.50', '0.50 - 0.75', '0.75 - 1', '1 - 5', '5 - 10', '>10'), 
-                      breaks = c('#f2f3f4', '#bdc3c7', '#626567', '#c70039', '#900c3f', '#581845'), 
-                      guide = 'legend') +
-  # theme(legend.position = 'none') + 
-  coord_sf(xlim = c(-90.171, -90.160), ylim = c(38.606, 38.612), crs = 4326) +
-  theme(
-    axis.text = element_blank(), 
-    axis.ticks = element_blank(), 
-    legend.position = 'none'
-  )
-ggsave('output/map-filled-parcels-zoomed-in-left.png', height = 4, width = 5, units = 'in') 
+basemap(cutoff = 1) + 
+  labs(title = 'Parcels with Total PCB concentration >1 ppm', 
+       subtitle = 'Parcels with >1 ppm concentration shown as shades of red; otherwise gray')
+ggsave('output/map-filled-parcels-zoomed-out-1ppm.png', height = 6, width = 8, units = 'in') 
+
+basemap(cutoff = 0.25) + 
+  labs(title = 'Parcels with Total PCB concentration >0.25 ppm', 
+       subtitle = 'Parcels with >0.25 ppm concentration shown as shades of red; otherwise gray')
+ggsave('output/map-filled-parcels-zoomed-out-0.25ppm.png', height = 6, width = 8, units = 'in') 
+
+basemap(cutoff = 0.034) +
+  labs(title = 'Parcels with Total PCB concentration >0.034 ppm', 
+       subtitle = 'Parcels with >0.034 ppm concentration shown as shades of red; otherwise gray')
+ggsave('output/map-filled-parcels-zoomed-out-0.034ppm.png', height = 6, width = 8, units = 'in') 
 
 
-ggplot(sf_total_pcbs, aes(fill = colors)) + 
-  annotation_map_tile(type = 'cartolight', zoom = 18) +
-  geom_sf(alpha = 0.75, size = 0.25) +
-  # geom_sf(data = esl, fill = NA, color = 'gray') + 
-  # geom_sf(data = monsanto, fill = NA, color = 'orange', size = 0.5) +
-  # geom_sf(data = monsanto_incin, fill = 'orange', color = NA) + 
-  # scale_fill_gradient(low = 'orange', high = 'red') +
-  scale_fill_identity('Concentration\n(ppm)', 
-                      labels = c('<0.50', '0.50 - 0.75', '0.75 - 1', '1 - 5', '5 - 10', '>10'), 
-                      breaks = c('#f2f3f4', '#bdc3c7', '#626567', '#c70039', '#900c3f', '#581845'), 
-                      guide = 'legend') +
-  # theme(legend.position = 'none') + 
-  coord_sf(xlim = c(-90.164, -90.158), ylim = c(38.598, 38.605), crs = 4326) +
-  theme(
-    axis.text = element_blank(), 
-    axis.ticks = element_blank(), 
-    legend.position = 'none'
-  )
-ggsave('output/map-filled-parcels-zoomed-in-middle.png', height = 4, width = 3, units = 'in') 
+# ggplot(sf_total_pcbs, aes(fill = colors)) + 
+#   annotation_map_tile(type = 'cartolight', zoom = 15) +
+#   geom_sf(alpha = 0.85, size = 0.25) +
+#   geom_sf(data = esl, fill = NA, color = 'gray') + 
+#   geom_sf(data = monsanto, fill = NA, color = 'orange', size = 0.5) +
+#   geom_sf(data = monsanto_incin, fill = 'orange', color = NA) + 
+#   scale_fill_identity('Concentration\n(ppm)',
+#                       labels = c('<0.034', '0.034 - 0.25', '0.25 - 0.5', '0.5 - 1', '1 - 5', '5 - 10', '>10'),
+#                       guide = 'legend') +
+#   coord_sf(xlim = c(-90.172, -90.148), ylim = c(38.595, 38.612), crs = 4326) +
+#   annotation_scale(location = "bl", width_hint = 0.2) +
+#   cowplot::theme_map()
+# # annotation_north_arrow(location = "bl", which_north = "true",
+# #                        pad_x = unit(0.50, "in"), pad_y = unit(0.25, "in"),
+# #                        style = north_arrow_orienteering)
+# ggsave('output/map-filled-parcels-zoomed-out.png', height = 6, width = 8, units = 'in') 
+
+zoomed_left <- function(cutoff = 1) { 
+  dfcol <- paste0('cutoff_', cutoff)
+  bc <- bins_and_colors |> select(breaks, labels, colors = dfcol)
+  
+  mapdata <- sf_total_pcbs |>
+    mutate(breaks = cut(conc, breaks = c(0, 0.034, 0.25, 0.50, 1, 5, 10, Inf))) |>
+    left_join(bc, by = 'breaks') |>
+    mutate(labels = factor(labels, levels = bc$labels),
+           colors = factor(colors, levels = bc$colors))
+  
+  ggplot(mapdata, aes(fill = colors)) + 
+    annotation_map_tile(type = 'cartolight', zoom = 18) +
+    geom_sf(alpha = 0.85, size = 0.25) +
+    # geom_sf(data = esl, fill = NA, color = 'gray') + 
+    # geom_sf(data = monsanto, fill = NA, color = 'orange', size = 0.5) +
+    # geom_sf(data = monsanto_incin, fill = 'orange', color = NA) + 
+    # scale_fill_gradient(low = 'orange', high = 'red') +
+    scale_fill_identity() +
+    coord_sf(xlim = c(-90.171, -90.160), ylim = c(38.606, 38.612), crs = 4326) +
+    cowplot::theme_map() 
+}
+
+zoomed_left(cutoff = 1)
+ggsave('output/map-filled-parcels-zoomed-in-left-1ppm.png', height = 4, width = 5, units = 'in')
+
+zoomed_left(cutoff = 0.25)
+ggsave('output/map-filled-parcels-zoomed-in-left-0.25ppm.png', height = 4, width = 5, units = 'in') 
+
+zoomed_left(cutoff = 0.034)
+ggsave('output/map-filled-parcels-zoomed-in-left-0.034ppm.png', height = 4, width = 5, units = 'in') 
+
+# 
+# ggplot(sf_total_pcbs, aes(fill = colors)) + 
+#   annotation_map_tile(type = 'cartolight', zoom = 18) +
+#   geom_sf(alpha = 0.85, size = 0.25) +
+#   # geom_sf(data = esl, fill = NA, color = 'gray') + 
+#   # geom_sf(data = monsanto, fill = NA, color = 'orange', size = 0.5) +
+#   # geom_sf(data = monsanto_incin, fill = 'orange', color = NA) + 
+#   # scale_fill_gradient(low = 'orange', high = 'red') +
+#   scale_fill_identity() +
+#   coord_sf(xlim = c(-90.171, -90.160), ylim = c(38.606, 38.612), crs = 4326) +
+#   cowplot::theme_map() 
+# ggsave('output/map-filled-parcels-zoomed-in-left.png', height = 4, width = 5, units = 'in') 
+
+
+zoomed_right <- function(cutoff = 1) { 
+  dfcol <- paste0('cutoff_', cutoff)
+  bc <- bins_and_colors |> select(breaks, labels, colors = dfcol)
+  
+  mapdata <- sf_total_pcbs |>
+    mutate(breaks = cut(conc, breaks = c(0, 0.034, 0.25, 0.50, 1, 5, 10, Inf))) |>
+    left_join(bc, by = 'breaks') |>
+    mutate(labels = factor(labels, levels = bc$labels),
+           colors = factor(colors, levels = bc$colors))
+  
+  ggplot(mapdata, aes(fill = colors)) + 
+    annotation_map_tile(type = 'cartolight', zoom = 18) +
+    geom_sf(alpha = 0.85, size = 0.25) +
+    scale_fill_identity() +
+    # geom_sf(data = esl, fill = NA, color = 'gray') + 
+    # geom_sf(data = monsanto, fill = NA, color = 'orange', size = 0.5) +
+    # geom_sf(data = monsanto_incin, fill = 'orange', color = NA) + 
+    # scale_fill_gradient(low = 'orange', high = 'red') +
+    coord_sf(xlim = c(-90.164, -90.158), ylim = c(38.598, 38.605), crs = 4326) +
+    cowplot::theme_map() 
+}
+
+zoomed_right(cutoff = 1) 
+ggsave('output/map-filled-parcels-zoomed-in-middle-1ppm.png', height = 4, width = 3, units = 'in') 
+
+zoomed_right(cutoff = 0.25) 
+ggsave('output/map-filled-parcels-zoomed-in-middle-0.25ppm.png', height = 4, width = 3, units = 'in') 
+
+zoomed_right(cutoff = 0.034) 
+ggsave('output/map-filled-parcels-zoomed-in-middle-0.034ppm.png', height = 4, width = 3, units = 'in') 
+
+# ggplot(sf_total_pcbs, aes(fill = colors)) + 
+#   annotation_map_tile(type = 'cartolight', zoom = 18) +
+#   geom_sf(alpha = 0.85, size = 0.25) +
+#   scale_fill_identity() +
+#   # geom_sf(data = esl, fill = NA, color = 'gray') + 
+#   # geom_sf(data = monsanto, fill = NA, color = 'orange', size = 0.5) +
+#   # geom_sf(data = monsanto_incin, fill = 'orange', color = NA) + 
+#   # scale_fill_gradient(low = 'orange', high = 'red') +
+#   coord_sf(xlim = c(-90.164, -90.158), ylim = c(38.598, 38.605), crs = 4326) +
+#   cowplot::theme_map() 
+# ggsave('output/map-filled-parcels-zoomed-in-middle.png', height = 4, width = 3, units = 'in') 
+
 
 
 #### Plots ----
@@ -298,6 +362,26 @@ layout <- c(
 p2 + p1 + 
   plot_layout(design = layout)
 ggsave('output/total-pcbs-only-log-cum-and-boxplot.png', height = 6, width = 8, units = 'in') 
+
+
+
+# Bar plot to demonstrate the number of parcels per bin visually
+total_pcbs |> 
+  group_by(breaks) |> 
+  count()
+plotdata <- total_pcbs |>
+  mutate(breaks = cut(conc, breaks = c(0, 0.034, 0.25, 0.50, 1, 5, 10, Inf))) |>
+  group_by(breaks) |> 
+  count() |> 
+  left_join(bins_and_colors |> select(breaks, labels, colors = cutoff_0.034), by = 'breaks') 
+ggplot(plotdata, aes(x = breaks, y = n, fill = colors)) + 
+  geom_col() + 
+  scale_fill_identity() + 
+  geom_text(aes(label = n), vjust = -0.5) + 
+  scale_x_discrete(labels = bins_and_colors$labels) + 
+  labs(x = 'Total PCBs (ppm)', y = 'Number of parcels') + 
+  cowplot::theme_cowplot()
+ggsave('output/num-parcels-by-bin.png', height = 6, width = 8, units = 'in') 
 
 #### Tables ----
 summ_stats <- totals |> 
