@@ -362,7 +362,7 @@ server <- function(input, output, session) {
   output$table <- renderReactable({
     tabledata <- df |> 
       # mutate(analyte_pr = factor(analyte_pr, levels = c('Mono', 'Di', 'Tri', 'Tetra', 'Penta', 'Hexa', 'Hepta', 'Octa', 'Nona', 'Deca', 'Total'))) |> 
-      select(-geoid, -city, -county, -lat, -lon, -area_acre, -units, -sampling_d, -est_method, -sample_ids, -lab_ids) |> 
+      select(-geoid, -city, -county, -lat, -lon, -area_acre, -units, -sampling_d, -est_conc, -est_method, -sample_ids, -lab_ids) |> 
       filter(!str_detect(analyte, 'Total')) 
     
     reactable(
@@ -424,7 +424,7 @@ server <- function(input, output, session) {
           'Analyte'
         ), 
         
-        est_conc = colDef(
+        conc = colDef(
           aggregate = 'sum',
           'Concentration (ppb)', 
           align = 'right', 

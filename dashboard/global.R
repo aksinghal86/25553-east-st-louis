@@ -15,7 +15,7 @@ shinyOptions(cache = cachem::cache_disk("./e-stl-dashboard-cache"))
 
 
 # Data files
-sfdf <- st_read('data/gis/all-data-with-geos.shp', quiet = T) %>% 
+sfdf <- st_read('data/gis/data-by-parcel.shp', quiet = T) %>% 
   mutate_at(c("lat", "lon"), as.numeric) 
 df <- st_drop_geometry(sfdf) 
 totals <- df %>% 
