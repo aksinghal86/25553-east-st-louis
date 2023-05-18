@@ -7,6 +7,8 @@ library(ggspatial)
 library(flextable)
 library(patchwork)
 library(openxlsx)
+library(terra)
+library(gstat)
 
 # Data -------------------------------------------------------------------------
 
@@ -40,7 +42,7 @@ st_crs(sfdf) <- 4326
 
 totals <- sfdf %>% filter(str_detect(analyte, "Total"))
 
-# Maps --------------------------------------------------------------------------
+# Basic Maps --------------------------------------------------------------------------
 
 ## All studies, zoomed out
 ggplot(totals) +
@@ -74,6 +76,8 @@ ggplot(totals %>% filter(Study == "USEPA (1976)")) +
     #  axis.ticks = element_blank()
   )
 ggsave('output/estl-zoomed-in-USEPA.png', height = 6, width = 10, units = 'in')
+
+
 
 #Hermanson Zoomed in
 ggplot(totals %>% filter(Study == "Hermanson (2016)")) +
@@ -171,136 +175,284 @@ ggsave('output/map-filled-Gonzalez-2010.png', height = 6, width = 8, units = 'in
 
 
 # Heat maps ---------------------------------------------------------------------
-library(terra)
-library(gstat)
 
 
-# Create raster
-r <- rast(nrows = 1000, ncols = 1000, xmin = -90.195, xmax = -90.15, ymin = 38.58, ymax = 38.615)
-# This raster is for the whole city but it is a far bigger area than that sampled. 
-# r <- rast(nrows = 100, ncols = 100, xmin = -90.18666, ymin = 38.57875, xmax = -90.04169, ymax = 38.64267)
+#### Model with nested df and functions:
+
+
+# Create raster - setting to the boundaries of all study points plus some extra room
+r <- rast(nrows = 1000, ncols = 1000,   
+          xmin = min(dat_coords$lon)-.01, xmax = max(dat_coords$lon)+.01, 
+          ymin = min(dat_coords$lat)-.01, ymax = max(dat_coords$lat)+.01)
 names(r) <- 'log.result'
 
-r
-
-
-## SINGLE MODEL
-# Create variogram for each analyte group and fit the variogram
+# Create variogram for each Study group and fit the variogram
 vmods <- dat_coords %>%
-  filter(analyte == "Total PCBs",
-         Study == "USEPA (1976)") %>%
-  select(Study, x = lon, y = lat, result = est_conc ) 
-
-sf = vect(vmods, geom=c('x','y'))
-v = variogram(log(vmods$result) ~ 1, ~ x + y, data = vmods)
-mu = fit.variogram(
-  v, vgm(psill = max(v$gamma)*.5,
-         model = "Sph",
-         range = max(v$dist)/2,
-         nuggt = mean(v$gamma)/4)
-)
-k = gstat(id = 'log.result', formula = log(result) ~ 1, locations = ~ x + y, data = vmods, 
-          model = mu)
-
-start <-  Sys.time()
-kp = terra::interpolate(r, k)
-end <- Sys.time()
-print(end-start)
-
-
-plot(kp$log.result.pred)
-points(sf)
-#terra::text(sf, dat_coords$Sample.ID) ## labels aren't in correct order (1-4 should be in top right)
-
-totals.epa <- totals %>% filter(str_detect(Study, "EPA"))
-
-#EPA Zoomed in
-ggplot() +
-  annotation_map_tile(type = 'cartolight', zoom = 15) + 
-  layer_spatial(kp$log.result.pred, alpha=.85) +
-  scale_fill_continuous(type = 'viridis') +
-  geom_sf(data=totals.epa) +
-  geom_sf_text(data=totals.epa, label = c(totals.epa$Sample.ID),
-               nudge_x = 1) +
-  geom_sf(data = esl, fill = NA, color = 'gray') + 
-  geom_sf(data = monsanto, fill = NA, color = 'orange', size = 0.5) +
-  geom_sf(data = monsanto_incin, fill = 'orange', color = NA) + 
-  geom_sf(data = monsanto_storage, fill = 'orange', color = NA) +
-  coord_sf(xlim = c(-90.195, -90.15), ylim = c(38.585, 38.615), crs = 4326)
-  
-
-writeRaster(hmapr, paste0('data/rasters/', Study, '.png'), overwrite = T)
-
-
-
-library(maptiles)
-bg <- get_tiles(ext(sf))
-terra::plotRGB(bg)
-terra::points(sf)
-
-# MAPPED MODELS
-
-# Create variogram for each analyte group and fit the variogram
-vmods <- dat_coords %>%
+  filter(est_conc < 40) %>% ### Gonzalez has too high of outlier
   filter(analyte == "Total PCBs") %>%
   select(Study, x = lon, y = lat, result = est_conc, ) %>%
   group_by(Study) %>% 
   nest() %>% 
   mutate(
-    # Create SpatVector
+    ## Create SpatVector
     sf = map(data, ~ vect(., geom = c('x', 'y'))), 
-    # Create variogram for each analyte group
+    ## Create variogram for each study group
     v = map(data, ~ variogram(log(result) ~ 1, ~ x + y, data = .)),  
-    # Fit the variogram
+    ## Fit the variogram
     mu = map(
-      v, 
-      ~ fit.variogram(
-        ., 
-        ## Optimization params
+      v, ~ fit.variogram(., 
+        ## Optimization params -- may need to refine
         vgm(psill=max(.x$gamma)*0.5,
             model = 'Sph',
             range = max(.x$dist)/2,
             nugget = mean(.x$gamma)/4)
       )), 
     k = map2(
-      data, mu, 
-      ~ gstat(id = 'log.result', formula = log(result) ~ 1, locations = ~ x + y, data = .x, model = .y)
-    )
+      data, mu, ~ gstat(id = 'log.result', formula = log(result) ~ 1,
+                        locations = ~ x + y, data = .x, model = .y))
   )
 
 
 ## Interpolate using the model. 
 # This will take some time based on raster dimensions, so beware the curse of dimensionality.
-# For a 100 x 100 raster grid, it takes about 5 seconds, but 
-# for a 1,000 x 1,000 raster grid, it takes about 7 - 10 mins on my machine
 start <-  Sys.time()
 vmods <- vmods %>% 
   mutate(kp = map( k, ~ terra::interpolate(r, .x) ))
 end <- Sys.time()
 print(end-start)
 
-# East St. Louis boundaries from TIGRIS shape files
-esl <- tigris::places('Illinois', cb = T) %>%
-  tigris::filter_place('East St. Louis') %>% 
-  rmapshaper::ms_dissolve() %>% 
-  sf::st_transform('EPSG:4326')
 
-# vmods2 <- vmods %>% 
-#   mutate(
-#     kp_esl = map(kp, ~ terra::mask(.x, esl)), 
-#     heatmaps = map(kp_esl, ~ as.polygons(.x))
-#   )
-
-save_heatmap_rasters <- function(Study, hmapr) {
-  hmapr$Study <- Study
-  writeRaster(hmapr, paste0('data/rasters/', Study, '.png'), overwrite = T)
-  # writeRaster(hmapr, paste0('dashboard/data/rasters/', Study, '.tif'), overwrite = T)
+# Plot the models:
+plot_heat <- function(study, stitle){
+  
+  totals.study <- totals %>% filter(Study == study)
+  vmods2 <- vmods %>% filter(Study == study)
+  
+  ggplot() +
+    ## Add base map
+    annotation_map_tile(type = 'cartolight', zoom = 15) + 
+    
+    ## Add raster -- alpha so we can slight see base map
+    layer_spatial(vmods2$kp[[1]]$log.result.pred, alpha=.75) +
+    
+    ## Colors
+    scale_fill_continuous(type = 'viridis', name = "Log(concentration)") +
+    
+    ## Add sample points
+    geom_sf(data=totals.study, fill=NA) +
+    
+    ## Add E St Louis + Monsanto outlines:
+    geom_sf_text(data=totals.study, label = c(totals.study$Sample.ID),
+                 nudge_x = 1) +
+    geom_sf(data = esl, fill = NA, color = 'gray') + 
+    geom_sf(data = monsanto, fill = NA, color = 'orange', size = 0.5) +
+    geom_sf(data = monsanto_incin, fill = 'orange', color = NA) + 
+    geom_sf(data = monsanto_storage, fill = 'orange', color = NA) +
+    
+    ## Map size
+    coord_sf(xlim = c(min(vmods2$data[[1]]$x)-.005,      max(vmods2$data[[1]]$x)+.005),
+             ylim = c(min(vmods2$data[[1]]$y)-.005, max(vmods2$data[[1]]$y)+.005), crs = 4326) +
+   
+    ## Add Labels to points -- not working... fix at some point?
+    # geom_sf_text(data=totals.study, label = c(totals.study$Sample.ID),
+    #               nudge_x = 1) +
+    
+    ## output settings of map
+    theme(axis.title = element_blank()) +
+    labs(title = paste0(study,' Log Transformed Total PCB Sample Concentrations'),
+         subtitle = stitle) 
+  
 }
 
-walk2(vmods$Study, vmods2$kp_esl, ~ save_heatmap_rasters(.x, .y))
+plot_heat("USEPA (1976)", "Soil Samples")
+ggsave('output/heatmap2-EPA1976.png', height = 6, width = 8, units = 'in') 
 
-#install.packages("ggmap")
-library(ggmap)
+plot_heat("Hermanson (2016)", "Tree Bark Samples")
+ggsave('output/heatmap2-Hermanson2016.png', height = 6, width = 8, units = 'in') 
 
-map <- get_map(location = c(lon = -90.15, lat= 38.6), source = "stamen")
+plot_heat("Gonzalez (2010)", "House Dust Samples") 
+ggsave('output/heatmap2-Gonzalez2010.png', height = 6, width = 8, units = 'in') 
+
+
+
+
+# ## Individually made heatmaps - ignore ---------------------------------------------
+# 
+# # Create raster
+# r <- rast(nrows = 1000, ncols = 1000, xmin = -90.195, xmax = -90.15, ymin = 38.58, ymax = 38.615)
+# # This raster is for the whole city but it is a far bigger area than that sampled. 
+# # r <- rast(nrows = 100, ncols = 100, xmin = -90.18666, ymin = 38.57875, xmax = -90.04169, ymax = 38.64267)
+# names(r) <- 'log.result'
+# 
+# r
+# 
+# 
+# ## SINGLE MODEL
+# # Create variogram for each analyte group and fit the variogram
+# vmods <- dat_coords %>%
+#   filter(analyte == "Total PCBs",
+#          Study == "USEPA (1976)") %>%
+#   select(Study, x = lon, y = lat, result = est_conc ) 
+# 
+# sf = vect(vmods, geom=c('x','y'))
+# v = variogram(log(vmods$result) ~ 1, ~ x + y, data = vmods)
+# mu = fit.variogram(
+#   v, vgm(psill = max(v$gamma)*.5,
+#          model = "Sph",
+#          range = max(v$dist)/2,
+#          nuggt = mean(v$gamma)/4)
+# )
+# k = gstat(id = 'log.result', formula = log(result) ~ 1, locations = ~ x + y, data = vmods, 
+#           model = mu)
+# 
+# start <-  Sys.time()
+# kp = terra::interpolate(r, k)
+# end <- Sys.time()
+# print(end-start)
+# 
+# 
+# #plot(kp$log.result.pred)
+# #points(sf)
+# 
+# totals.epa <- totals %>% filter(str_detect(Study, "EPA"))
+# 
+# #EPA Zoomed in
+# ggplot() +
+#   annotation_map_tile(type = 'cartolight', zoom = 15) + 
+#   layer_spatial(kp$log.result.pred, alpha=.85) +
+#   scale_fill_continuous(type = 'viridis', name = "Log(concentration)") +
+#   geom_sf(data=totals.epa, fill=NA) +
+#   geom_sf_text(data=totals.epa, label = c(totals.epa$Sample.ID),
+#                nudge_x = 1) +
+#   geom_sf(data = esl, fill = NA, color = 'gray') + 
+#   geom_sf(data = monsanto, fill = NA, color = 'orange', size = 0.5) +
+#   geom_sf(data = monsanto_incin, fill = 'orange', color = NA) + 
+#   geom_sf(data = monsanto_storage, fill = 'orange', color = NA) +
+#   coord_sf(xlim = c(-90.195, -90.15), ylim = c(38.580, 38.615), crs = 4326) +
+#   geom_sf_text(data=totals.epa, label = c(totals.epa$Sample.ID),
+#                nudge_x = 1) +
+#   theme(axis.title = element_blank()) +
+#   labs(title = 'USEPA (1976) Log Transformed Total PCB Sample Concentrations') 
+# 
+# 
+# ggsave('output/map-heat-EPA.png', height = 6, width = 8, units = 'in') 
+# 
+# 
+# 
+# ## SINGLE MODEL
+# # Create variogram for each analyte group and fit the variogram
+# # Create raster
+# r <- rast(nrows = 1000, ncols = 1000,  
+#           xmin = -90.198, xmax = -90.128, ymin = 38.575, ymax = 38.635)
+# names(r) <- 'log.result'
+# 
+# vmods <- dat_coords %>%
+#   filter(analyte == "Total PCBs",
+#          Study == "Hermanson (2016)") %>%
+#   select(Study, x = lon, y = lat, result = est_conc ) 
+# 
+# sf = vect(vmods, geom=c('x','y'))
+# v = variogram(log(vmods$result) ~ 1, ~ x + y, data = vmods)
+# mu = fit.variogram(
+#   v, vgm(psill = max(v$gamma)*.5,
+#          model = "Sph",
+#          range = max(v$dist)/2,
+#          nuggt = mean(v$gamma)/4)
+# )
+# k = gstat(id = 'log.result', formula = log(result) ~ 1, locations = ~ x + y, data = vmods, 
+#           model = mu)
+# 
+# start <-  Sys.time()
+# kp = terra::interpolate(r, k)
+# end <- Sys.time()
+# print(end-start)
+# 
+# 
+# #plot(kp$log.result.pred)
+# #points(sf)
+# 
+# totals.hm <- totals %>% filter(str_detect(Study, "Hermanson"))
+# 
+# #EPA Zoomed in
+# ggplot() +
+#   annotation_map_tile(type = 'cartolight', zoom = 15) + 
+#   layer_spatial(kp$log.result.pred, alpha=.85) +
+#   scale_fill_continuous(type = 'viridis', name = "Log(concentration)") +
+#   geom_sf(data=totals.hm, fill=NA) +
+#   geom_sf_text(data=totals.hm, label = c(totals.hm$Sample.ID),
+#                nudge_x = 1) +
+#   geom_sf(data = esl, fill = NA, color = 'gray') + 
+#   geom_sf(data = monsanto, fill = NA, color = 'orange', size = 0.5) +
+#   geom_sf(data = monsanto_incin, fill = 'orange', color = NA) + 
+#   geom_sf(data = monsanto_storage, fill = 'orange', color = NA) +
+#   coord_sf(xlim = c(-90.192, -90.13), ylim = c(38.58, 38.63), crs = 4326) +
+#   geom_sf_text(data=totals.hm, label = c(totals.hm$Sample.ID),
+#                nudge_x = 1) +
+#   theme(axis.title = element_blank()) +
+#   labs(title = 'Hermanson (2016) Log Transformed Total PCB Sample Concentrations') 
+# 
+# 
+# ggsave('output/map-heat-Hermanson.png', height = 6, width = 8, units = 'in') 
+# 
+# 
+# ## SINGLE MODEL
+# # Create variogram for each analyte group and fit the variogram
+# # Create raster
+# r <- rast(nrows = 1000, ncols = 1000,   
+#           xmin = -90.192, xmax = -90.136, ymin = 38.569, ymax = 38.62)
+# names(r) <- 'log.result'
+# 
+# vmods <- dat_coords %>%
+#   filter(analyte == "Total PCBs",
+#          Study == "Gonzalez (2010)",
+#          ### NOTE: there was one point over 40ppm while all others are around 3 and below
+#          ###       was causing singular model. Remove to fix model
+#          est_conc < 30) %>%
+#   select(Study, x = lon, y = lat, result = est_conc ) 
+# 
+# sf = vect(vmods, geom=c('x','y'))
+# v = variogram(log(result) ~ 1, ~ x + y, data = vmods)
+# mu = fit.variogram(v, 
+#                    vgm(psill = max(v$gamma)*.9,
+#                        model = "Sph",
+#                        range = max(v$dist)/2,
+#                        nuggt = mean(v$gamma)/4)
+# )
+# k = gstat(id = 'log.result', formula = log(result) ~ 1, locations = ~ x + y,
+#           data = vmods, 
+#           model = mu)
+# 
+# start <-  Sys.time()
+# kp = terra::interpolate(r, k)
+# end <- Sys.time()
+# print(end-start)
+# 
+# 
+# #plot(kp$log.result.pred)
+# #points(sf)
+# 
+# totals.hm <- totals %>% filter(str_detect(Study, "Gonzalez"))
+# 
+# ggplot() +
+#   annotation_map_tile(type = 'cartolight', zoom = 15) + 
+#   layer_spatial(kp$log.result.pred, alpha=.85) +
+#   scale_fill_continuous(type = 'viridis', name = "Log(concentration)") +
+#   geom_sf(data=totals.hm, fill=NA) +
+#   geom_sf_text(data=totals.hm, label = c(totals.hm$Sample.ID),
+#                nudge_x = 1) +
+#   geom_sf(data = esl, fill = NA, color = 'gray') + 
+#   geom_sf(data = monsanto, fill = NA, color = 'orange', size = 0.5) +
+#   geom_sf(data = monsanto_incin, fill = 'orange', color = NA) + 
+#   geom_sf(data = monsanto_storage, fill = 'orange', color = NA) +
+#   coord_sf(xlim = c(-90.192,-90.136), ylim = c(38.569, 38.62), crs = 4326) +
+#   geom_sf_text(data=totals.hm, label = c(totals.hm$Sample.ID),
+#                nudge_x = 1) +
+#   theme(axis.title = element_blank()) +
+#   labs(title = 'Gonzalez (2010) Log Transformed Total PCB Sample Concentrations') 
+# 
+# 
+# ggsave('output/map-heat-Gonzalez.png', height = 6, width = 8, units = 'in') 
+# 
+
+
 
