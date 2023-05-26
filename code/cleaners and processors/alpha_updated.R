@@ -27,6 +27,7 @@ al <- tidyxl::xlsx_cells(fname, sheet = sheets[str_detect(sheets, 'Samples ')]) 
 
 glimpse(al)
 
+## Selects the header of the sheet (rows 2-6), makes df with the basic sample info (IDs, date, matrix) 
 al_sample_cols <- map(c(2,3,4,6), create_sample_cols) %>%
   bind_cols %>%
   filter(sample_id != "SAMPLE ID: ") %>%
@@ -41,16 +42,23 @@ al_sample_cols <- map(c(2,3,4,6), create_sample_cols) %>%
          sheet)
 
 
-al2 <- al[between(al$row, 8, 209), ] 
+al2 <- al[between(al$row, 39, 209), ] # starts at PCB 1, ends at PCB 209 (excludes TEQ, total solids)
 
-analytes <- al2 <- al[between(al$row, 39, 209), ]  # starts at PCB 1, ends at PCB 209 (excludes TEQ, total solids)
+analytes <- al2  
 
-analytes <- al2[al2$col == 1, c('sheet','character')] %>%
+analytes <- al2[al2$col == 1, c('character')] %>%
   mutate(casrn = NA) %>%
   rename(analyte = character) %>%
   unique
 
-aldf <- merge(al_sample_cols, analytes, all = T)%>% 
+test <- al[al$row == 8 & al$character == "Result", 'col']
+test2 <- al2[al2$col %in% test$col, ]
+
+
+aldf <- merge(al_sample_cols, analytes, all = T) %>%
+  mutate(analyte = factor(analyte, ordered = TRUE, levels = c(unique(analyte))),
+         sheet = factor(sheet, ordered = TRUE, levels = c(unique(sheet)))) %>%
+  arrange(sheet, analyte) %>%
   mutate(
     # Finds the result column (concentration) 
     conc = al2[al2$col %in% col_wanted('Result')$col, ]$numeric, 
@@ -67,7 +75,7 @@ aldf <- merge(al_sample_cols, analytes, all = T)%>%
     # Finds the detection limit column
     dl = al2[al2$col %in% col_wanted('RL')$col, ]$numeric,
     dl_ch =al2[al2$col %in% col_wanted('RL')$col, ]$character
-  )
+  ) 
 
 ## LKT TO DO -- get location, casrn, do a quick QC check
 
@@ -99,16 +107,18 @@ nrow(unique(dat_parcel%>% select(location, lab_sample_id)))
 # find the CAS numbers associated with each analyte
 dat_cas <- dat_original %>%
   select(analyte, casrn) %>%
-  distinct()
+  distinct() %>%
+  mutate(analyte = factor(analyte, ordered = TRUE, levels = c(unique(analyte))))
 
-# Join in the CAS number for each analyte
+# Join in the CAS number for each analyte - right join so it keeps the PCB order correct
 alpha_parcel <- alpha_parcel %>%
   select(-casrn) %>%
-  left_join(dat_cas)
+  left_join(dat_cas) %>%
+  arrange(sheet, lab_sample_id, analyte)
 
 # check if there is missing CAS info -- No!
-test <- alpha_parcel %>% filter(is.na(casrn)) %>% select(location, lab_sample_id, analyte) %>% distinct()
-test
+alpha_parcel %>% filter(is.na(casrn)) %>% select(location, lab_sample_id, analyte) %>% distinct()
+
 
 # Change the Qualifier column to NA if blank
 alpha_parcel <- alpha_parcel %>%
@@ -127,7 +137,6 @@ alpha_parcel <- alpha_parcel %>%
     is.na(conc) ~ as.numeric(conc_ch),
     TRUE ~ conc
   )) %>%
-  
   # Fix DL column -- sometimes value interpreted as character
   mutate(dl = case_when(
     is.na(dl)    ~ as.numeric(dl_ch),
@@ -148,12 +157,6 @@ alpha_parcel <- alpha_parcel %>%
     TRUE ~ TRUE)
   ) 
 
-# In the original data processing, samples with ND reported the DL, fill in ND with DL
-alpha_parcel <- alpha_parcel %>%
-  mutate(conc = case_when(
-    is.na(conc) ~ dl,
-    TRUE ~ conc
-  ))
 
 # Subset to final columns
 alpha_parcel <- alpha_parcel %>%
