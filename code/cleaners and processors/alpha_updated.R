@@ -67,7 +67,7 @@ aldf <- merge(al_sample_cols, analytes, all = T)%>%
     # Finds the detection limit column
     dl = al2[al2$col %in% col_wanted('RL')$col, ]$numeric,
     dl_ch =al2[al2$col %in% col_wanted('RL')$col, ]$character
-    )
+  )
 
 ## LKT TO DO -- get location, casrn, do a quick QC check
 
@@ -128,7 +128,7 @@ alpha_parcel <- alpha_parcel %>%
     TRUE ~ conc
   )) %>%
   
-# Fix DL column -- sometimes value interpreted as character
+  # Fix DL column -- sometimes value interpreted as character
   mutate(dl = case_when(
     is.na(dl)    ~ as.numeric(dl_ch),
     dl_ch == "-" ~ NA_real_,
@@ -144,8 +144,8 @@ unique(test$dl_ch) # only for data where the DL was listed as "-"
 # Add a detection column
 alpha_parcel <- alpha_parcel %>%
   mutate(detected = case_when(
-         is.na(conc) ~ FALSE,
-         TRUE ~ TRUE)
+    is.na(conc) ~ FALSE,
+    TRUE ~ TRUE)
   ) 
 
 # In the original data processing, samples with ND reported the DL, fill in ND with DL
