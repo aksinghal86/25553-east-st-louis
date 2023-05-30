@@ -44,15 +44,10 @@ al_sample_cols <- map(c(2,3,4,6), create_sample_cols) %>%
 
 al2 <- al[between(al$row, 39, 209), ] # starts at PCB 1, ends at PCB 209 (excludes TEQ, total solids)
 
-analytes <- al2  
-
 analytes <- al2[al2$col == 1, c('character')] %>%
   mutate(casrn = NA) %>%
   rename(analyte = character) %>%
   unique
-
-test <- al[al$row == 8 & al$character == "Result", 'col']
-test2 <- al2[al2$col %in% test$col, ]
 
 
 aldf <- merge(al_sample_cols, analytes, all = T) %>%
@@ -77,11 +72,11 @@ aldf <- merge(al_sample_cols, analytes, all = T) %>%
     dl_ch =al2[al2$col %in% col_wanted('RL')$col, ]$character
   ) 
 
-## LKT TO DO -- get location, casrn, do a quick QC check
+
 
 # The sample IDs did not have parcel location included in the data set so I'm going
 # to merge the original alpha data output of sample ID + parcel with the new 
-# data output. They also did not have the CAS rn 
+# data output. They also did not have the CASRN
 dat_original <- read.csv("C:/Users/ltravis/EH&E Dropbox/Laura Travis/25553 e stl/data/alpha.csv")
 dat_parcel <- dat_original %>%
   select(location, parcel, lab_sample_id) %>%
@@ -104,7 +99,7 @@ nrow(unique(alpha_parcel%>% select(location, lab_sample_id)))
 nrow(unique(dat_parcel%>% select(location, lab_sample_id)))
 310-245 == nrow(test)
 
-# find the CAS numbers associated with each analyte
+# Pull the CAS numbers associated with each analyte
 dat_cas <- dat_original %>%
   select(analyte, casrn) %>%
   distinct() %>%
@@ -157,10 +152,20 @@ alpha_parcel <- alpha_parcel %>%
     TRUE ~ TRUE)
   ) 
 
+## Saving the data with missing values in concentration or missing parcel info to separate dataset
+alpha_missing <- alpha_parcel %>%
+  filter(is.na(parcel) | str_detect(dl_ch, "-"))
 
-# Subset to final columns
-alpha_parcel <- alpha_parcel %>%
+
+# Subset to final columns, remove data with the missing info
+alpha_final <- alpha_parcel %>%
+  filter(!is.na(dl)) %>%
   select(sheet, analyte, casrn, location, parcel, sampling_date, lab_sample_id,
          sample_type, units, conc, detected, rl, dl, qualifier)
 
-write_csv(alpha_parcel, 'data/updated-alpha.csv')
+# check we didn't lose any rows
+nrow(alpha_missing) + nrow(alpha_final)==nrow(aldf)
+
+
+write_csv(alpha_final, 'data/updated-alpha.csv')
+write_csv(alpha_missing, 'data/alpha-missing-data.csv')

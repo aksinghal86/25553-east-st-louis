@@ -1,22 +1,30 @@
 library(tidyverse)
 
-alpha <- read_csv('data/alpha.csv') 
+alpha <- read_csv('data/updated-alpha.csv') 
 cape <- read_csv('data/cape-fear.csv')
 
 # Basic formatting and standardization
 # ND = 0 for conc; and ND = DL/2 for 'est_conc'
 # Largely, ND = 0 will be used for analysis but keeping ND = DL/2 in case that decision is reversed. 
 alphax <- alpha %>% 
+  ## remove where no parcel info
+  filter(!is.na(parcel)) %>%
   rename(lab_id = lab_sample_id, 
          sample_matrix = sample_type) %>% 
   mutate(lab = 'Alpha', 
          sampling_date = lubridate::mdy(sampling_date), 
-         dl = case_when(!detected ~ conc), 
+        # dl = case_when(!detected ~ conc),  ## LKT removed - dl is present in the updated data
          conc = ifelse(detected, conc, 0), # ND = 0
          est_conc = ifelse(detected, conc, dl/2), # ND = DL/2 
          est_method = 'Half DL', # For documentation
          old_analyte = analyte, 
          analyte = str_replace(str_replace(old_analyte, '^.+\\(', ''), '\\)$', ''))
+
+## LKT: there are sample IDs where the parcel is blank and all DL & concentrations are "-"
+## saving to separate df and removing from original df
+## Check -- Ankur
+alpha_blanks <- alpha %>%
+  filter(is.na(parcel))
 
 
 # QC to check that all analytes with coeluters ALWAYS coelute. 
@@ -209,11 +217,12 @@ alpha_by_parcel
 # This is effectively the raw data provided by the labs but cleaned up, 
 # transformed into long format, and harmonized for consistency between the two labs
 # This data set should be used for production!
+# LKT -- keeping qualifier, rl, dl
 data_for_production <- cape_combined |> 
   bind_rows(alpha_combined) |> 
   mutate(parcel = str_pad(parcel, 11, 'left', '0')) |> 
   arrange(parcel, analyte_prefix, analyte) |> 
-  select(-analyte_group, -sample_matrix, -qualifier, -rl, -dl, -sheet, -old_analyte) |> 
+  select(-analyte_group, -sample_matrix, -sheet, -old_analyte) |> 
   rename(homolog = analyte_prefix)
 
 # This data set contains data averaged by parcel so it does not contain any duplicates
