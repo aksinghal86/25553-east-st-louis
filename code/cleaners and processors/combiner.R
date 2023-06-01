@@ -20,12 +20,6 @@ alphax <- alpha %>%
          old_analyte = analyte, 
          analyte = str_replace(str_replace(old_analyte, '^.+\\(', ''), '\\)$', ''))
 
-## LKT: there are sample IDs where the parcel is blank and all DL & concentrations are "-"
-## saving to separate df and removing from original df
-## Check -- Ankur
-alpha_blanks <- alpha %>%
-  filter(is.na(parcel))
-
 
 # QC to check that all analytes with coeluters ALWAYS coelute. 
 # pct should always be 1, 0 or NA. (either always elutes, never elutes, or NA)
@@ -157,6 +151,9 @@ cape_by_parcel <- cape_combined %>%
   summarize(conc = mean(conc), # Average of duplicates
             est_conc = mean(est_conc),  # Average of duplicates
             detected = mean(detected), 
+            dl = mean(dl),     # Average of duplicates
+            rl = mean(rl),     # Average of duplicates,
+            qualifier = paste0(unique(qualifier), collapse = ", "), # list of qualifiers associated with analyte result
             sample_ids = paste0(unique(location), collapse = ', '), 
             lab_ids = paste0(unique(lab_id), collapse = ', ')) %>% 
   arrange(parcel, n_cl, analyte)
@@ -208,9 +205,12 @@ alpha_by_parcel <- alpha_combined %>%
   summarize(conc = mean(conc), # Average of duplicates
             est_conc = mean(est_conc), # Average of duplicates
             detected = mean(detected),
+            dl = mean(dl),     # Average of duplicates
+            rl = mean(rl),     # Average of duplicates,
+            qualifier = paste0(unique(qualifier), collapse = ", "), # list of qualifiers associated with analyte result
             sample_ids = paste0(unique(location), collapse = ', '), 
             lab_ids = paste0(unique(lab_id), collapse = ', ')) %>% 
-  arrange(parcel, n_cl, analyte)
+  arrange(parcel, n_cl, analyte) 
 alpha_by_parcel 
 
 # Data by sample id and not averaged by parcel, i.e., contains duplicates. 
