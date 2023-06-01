@@ -151,8 +151,8 @@ cape_by_parcel <- cape_combined %>%
   summarize(conc = mean(conc), # Average of duplicates
             est_conc = mean(est_conc),  # Average of duplicates
             detected = mean(detected), 
-            dl = mean(dl),     # Average of duplicates
-            rl = mean(rl),     # Average of duplicates,
+            dl = paste0(unique(dl), collapse = ", "),     # list of detection limits
+            rl = paste0(unique(rl), collapse = ", "),     # list of reporting limits
             qualifier = paste0(unique(qualifier), collapse = ", "), # list of qualifiers associated with analyte result
             sample_ids = paste0(unique(location), collapse = ', '), 
             lab_ids = paste0(unique(lab_id), collapse = ', ')) %>% 
@@ -205,8 +205,8 @@ alpha_by_parcel <- alpha_combined %>%
   summarize(conc = mean(conc), # Average of duplicates
             est_conc = mean(est_conc), # Average of duplicates
             detected = mean(detected),
-            dl = mean(dl),     # Average of duplicates
-            rl = mean(rl),     # Average of duplicates,
+            dl = paste0(unique(dl), collapse = ", "),     # list of detection limits
+            rl = paste0(unique(rl), collapse = ", "),     # list of reporting limits
             qualifier = paste0(unique(qualifier), collapse = ", "), # list of qualifiers associated with analyte result
             sample_ids = paste0(unique(location), collapse = ', '), 
             lab_ids = paste0(unique(lab_id), collapse = ', ')) %>% 
