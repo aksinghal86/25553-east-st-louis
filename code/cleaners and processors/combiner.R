@@ -20,6 +20,31 @@ alphax <- alpha %>%
          old_analyte = analyte, 
          analyte = str_replace(str_replace(old_analyte, '^.+\\(', ''), '\\)$', ''))
 
+# separate the the lab IDs with "R#" in them -- these were reanalyzed PCBs
+# Note: not including L2229504-03 RD (location GAY-7-S) as this appears to be a full set of 
+# analyzed PCBs, with no "original" data listed.
+alphar <- alphax %>%
+  filter(str_detect(lab_id, "R") & lab_id !="L2229504-03 RD") %>%
+  select(replacement_id = lab_id, analyte, old_analyte, conc_new = conc,
+         est_conc_new = est_conc, dl_new = dl,
+         location, parcel, lab, detected_new = detected)
+
+# Remove the reanalyzed PCBs and replace original value with them. Include note
+# that this was done.
+alphax <- alphax %>%
+  filter(!str_detect(lab_id, "R") | lab_id=="L2229504-03 RD") %>%
+  left_join(alphar) %>%
+  mutate(replacement_note = case_when(
+    !is.na(replacement_id) ~ paste0("Analytical results are from sample re-analysis. Original concentration: ",
+                                conc, "; Original DL: ", dl,"; Originally detected: ", detected),
+    TRUE ~ NA_character_
+  ),
+  detected = case_when(!is.na(detected_new) ~ detected_new, TRUE ~ detected),
+  conc = case_when(!is.na(conc_new) ~ conc_new, TRUE ~ conc),
+  est_conc = case_when(!is.na(est_conc_new) ~ est_conc_new, TRUE ~ est_conc),
+  dl   = case_when(!is.na(dl_new) ~ dl_new, TRUE ~ dl)) %>%
+  select(-conc_new, -dl_new, -detected_new, -est_conc_new)
+
 
 # QC to check that all analytes with coeluters ALWAYS coelute. 
 # pct should always be 1, 0 or NA. (either always elutes, never elutes, or NA)
