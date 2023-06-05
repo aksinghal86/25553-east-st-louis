@@ -76,8 +76,6 @@ ggplot(totals) +
           subtitle = "Gonzalez (2010), Hermanson (2016), & USEPA (1976)\nEast St. Louis city boundary (gray outline), former Monsanto plant (blue)")
 ggsave('output/estl-all-studies-color.jpg', height = 6, width = 10, units = 'in')
 
-
-
 #EPA bubble chart
 ggplot(totals %>% filter(Study == "USEPA (1976)")) +
   annotation_map_tile(type = 'cartolight', zoom = 14) + 
