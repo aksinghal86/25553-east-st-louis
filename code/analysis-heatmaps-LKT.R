@@ -40,7 +40,8 @@ dat_coords <- dat %>%
 sfdf <- sf::st_as_sf(dat_coords, coords=c('lon','lat'))
 st_crs(sfdf) <- 4326
 
-totals <- sfdf %>% filter(str_detect(analyte, "Total"))
+totals <- sfdf %>% filter(str_detect(analyte, "Total")) %>%
+  mutate(log_conc = log(est_conc))
 
 # Basic Maps --------------------------------------------------------------------------
 
@@ -48,11 +49,12 @@ totals <- sfdf %>% filter(str_detect(analyte, "Total"))
 ggplot(totals) +
   annotation_map_tile(type = 'cartolight', zoom = 13) +
  # geom_sf(fill = NA, size = 0.25) + ## points, no color, small size
-  geom_sf(aes(color = log(est_conc), size=log(est_conc))) + ## colored/sized on log conc
-  geom_sf(data = esl, fill = NA, color = 'gray') + 
-  geom_sf(data = monsanto, fill = NA, color = 'orange', size = 0.5) +
-  geom_sf(data = monsanto_incin, fill = 'orange', color = NA) + 
-  geom_sf(data = monsanto_storage, fill = 'orange', color = NA) +
+  geom_sf(data = esl, fill = NA, color = 'gray', linewidth = .75) + 
+  geom_sf(data = monsanto, fill = NA, color = 'steelblue4', linewidth = .75) +
+  geom_sf(data = monsanto_incin, fill = 'steelblue4', color = NA) + 
+  geom_sf(data = monsanto_storage, fill = 'steelblue4', color = NA) +
+  geom_sf(aes(color = log_conc, size=log_conc, fill = log_conc), ## colored/sized on log conc with outline
+          shape = 21, colour = "black") +
   # labs(title = 'East St. Louis city boundary (gray outline), former Monsanto plant (or') +
   theme(legend.position = 'none', 
         plot.title.position = 'plot') + 
@@ -61,84 +63,100 @@ ggplot(totals) +
                          height = unit(1, 'cm'), width = unit(1, 'cm'),
                          pad_x = unit(0.50, "in"), pad_y = unit(0.25, "in"),
                          style = north_arrow_orienteering) +
-  scale_size_continuous(name="Log(Concentration)") +
-  scale_alpha_continuous(name="Log(Concentration)") +
+  scale_fill_viridis_b(option="inferno", name="Log(Concentration)", direction = -1,
+                       limits = c(-2, 4.1), breaks=c(-2,-1, 0, 1, 2, 3, 4)) +
+  scale_size_continuous(name="Log(Concentration)", 
+                        limits = c(-2, 4.1), breaks=c(-2,-1, 0, 1, 2, 3, 4))+
   scale_color_viridis_b(option="inferno", name="Log(Concentration)", direction = -1) +
   theme_void() +
-  guides( colour = guide_legend()) +
+  guides(fill = guide_legend("Log(Concentration)"), 
+         color = guide_legend("Log(Concentration)"),
+         size = guide_legend("Log(Concentration)")) +
   ggtitle("Log Transformed Total PCB Sample Concentrations",
-          subtitle = "Gonzalez (2010), Hermanson (2016), & USEPA (1976),")
+          subtitle = "Gonzalez (2010), Hermanson (2016), & USEPA (1976)\nEast St. Louis city boundary (gray outline), former Monsanto plant (blue)")
 ggsave('output/estl-zoomed-out-color.jpg', height = 6, width = 10, units = 'in')
 
 
-#EPA Zoomed in
+#EPA bubble chart
 ggplot(totals %>% filter(Study == "USEPA (1976)")) +
   annotation_map_tile(type = 'cartolight', zoom = 14) + 
-  geom_sf(aes(color = log(est_conc), size=log(est_conc))) +
-  geom_sf(data = esl, fill = NA, color = 'gray') + 
-  geom_sf(data = monsanto, fill = NA, color = 'orange', size = 0.5) +
-  geom_sf(data = monsanto_incin, fill = 'orange', color = NA) + 
-  geom_sf(data = monsanto_storage, fill = 'orange', color = NA) +
-  coord_sf(xlim = c(-90.19, -90.158), ylim = c(38.585, 38.607), crs = 4326) + 
+  geom_sf(data = esl, fill = NA, color = 'gray', linewidth = .75) + 
+  geom_sf(data = monsanto, fill = NA, color = 'steelblue4', linewidth = .75) +
+  geom_sf(data = monsanto_incin, fill = 'steelblue4', color = NA) + 
+  geom_sf(data = monsanto_storage, fill = 'steelblue4', color = NA) +
+  geom_sf(aes(color = log_conc, size=log_conc, fill = log_conc),
+          shape = 21, colour = "black") +
+  coord_sf(xlim = c(-90.192, -90.13), ylim = c(38.585, 38.63), crs = 4326) + 
   theme(
     # axis.text = element_blank(), 
     #  axis.ticks = element_blank()
   ) +
-  scale_size_continuous(name="Log(Concentration)") +
-  scale_alpha_continuous(name="Log(Concentration)") +
-  scale_color_viridis_b(option="inferno", name="Log(Concentration)", direction = -1) +
+  scale_fill_viridis_b(option="inferno", name="Log(Concentration)", direction = -1,
+                       limits = c(-2, 4.1), breaks=c(-2,-1, 0, 1, 2, 3, 4)) +
+  scale_size_continuous(name="Log(Concentration)", 
+                        limits = c(-2, 4.1), breaks=c(-2,-1, 0, 1, 2, 3, 4))+
   theme_void() +
-  guides( colour = guide_legend()) +
-  ggtitle("USEPA (1976) Log Transformed Total PCB Sample Concentrations",
-          subtitle = "Soil Samples")
+  guides(fill = guide_legend("Log(Concentration)"), 
+         color = guide_legend("Log(Concentration)"),
+         size = guide_legend("Log(Concentration)")) +
+  ggtitle("USEPA (1976) Log Transformed Total PCB Soil Sample Concentrations",
+          subtitle = "East St. Louis city boundary (gray outline), former Monsanto plant (blue)")
 
 
 ggsave('output/estl-zoomed-in-USEPA.jpg', height = 6, width = 10, units = 'in')
 
 
 
-#Hermanson Zoomed in
+#Hermanson bubble chart
 ggplot(totals %>% filter(Study == "Hermanson (2016)")) +
   annotation_map_tile(type = 'cartolight', zoom = 14) + 
-  geom_sf(aes(color = log(est_conc), size=log(est_conc))) +
-  geom_sf(data = esl, fill = NA, color = 'gray') + 
-  geom_sf(data = monsanto, fill = NA, color = 'orange', size = 0.5) +
-  geom_sf(data = monsanto_incin, fill = 'orange', color = NA) + 
-  geom_sf(data = monsanto_storage, fill = 'orange', color = NA) +
+  geom_sf(data = esl, fill = NA, color = 'gray', linewidth = .75) + 
+  geom_sf(data = monsanto, fill = NA, color = 'steelblue4', linewidth = .75) +
+  geom_sf(data = monsanto_incin, fill = 'steelblue4', color = NA) + 
+  geom_sf(data = monsanto_storage, fill = 'steelblue4', color = NA) +
+  geom_sf(aes(color = log_conc, size=log_conc, fill = log_conc),
+          shape = 21, colour = "black") +
   coord_sf(xlim = c(-90.192, -90.13), ylim = c(38.585, 38.63), crs = 4326) + 
   theme(
     # axis.text = element_blank(), 
     #  axis.ticks = element_blank()
   ) +
-  scale_size_continuous(name="Log(Concentration)") +
-  scale_alpha_continuous(name="Log(Concentration)") +
-  scale_color_viridis_b(option="inferno", name="Log(Concentration)", direction = -1) +
+  scale_fill_viridis_b(option="inferno", name="Log(Concentration)", direction = -1,
+                       limits = c(-2, 4.1), breaks=c(-2,-1, 0, 1, 2, 3, 4)) +
+  scale_size_continuous(name="Log(Concentration)", 
+                        limits = c(-2, 4.1), breaks=c(-2,-1, 0, 1, 2, 3, 4))+
   theme_void() +
-  guides( colour = guide_legend()) +
-  ggtitle("Hermanson (2016) Log Transformed Total PCB Sample Concentrations",
-          subtitle = "Tree Bark Samples")
+  guides(fill = guide_legend("Log(Concentration)"), 
+         color = guide_legend("Log(Concentration)"),
+         size = guide_legend("Log(Concentration)")) +
+  ggtitle("Hermanson (2016) Log Transformed Total PCB Tree Bark Sample Concentrations",
+          subtitle = "East St. Louis city boundary (gray outline), former Monsanto plant (blue)")
 ggsave('output/estl-zoomed-in-Hermanson.jpg', height = 6, width = 10, units = 'in')
 
-#Gonzalez (2010) Zoomed in
+#Gonzalez (2010) bubble chart
 ggplot(totals %>% filter(Study == "Gonzalez (2010)")) +
   annotation_map_tile(type = 'cartolight', zoom = 14) + 
-  geom_sf(aes(color = log(est_conc), size=log(est_conc))) +
-  geom_sf(data = esl, fill = NA, color = 'gray') + 
-  geom_sf(data = monsanto, fill = NA, color = 'orange', size = 0.5) +
-  geom_sf(data = monsanto_incin, fill = 'orange', color = NA) + 
-  geom_sf(data = monsanto_storage, fill = 'orange', color = NA) +
-  coord_sf(xlim = c(-90.192, -90.136), ylim = c(38.569, 38.62), crs = 4326) + 
+  geom_sf(data = esl, fill = NA, color = 'gray', linewidth = .75) + 
+  geom_sf(data = monsanto, fill = NA, color = 'steelblue4', linewidth = .75) +
+  geom_sf(data = monsanto_incin, fill = 'steelblue4', color = NA) + 
+  geom_sf(data = monsanto_storage, fill = 'steelblue4', color = NA) +
+  geom_sf(aes(color = log_conc, size=log_conc, fill = log_conc),
+          shape = 21, colour = "black") +
+  coord_sf(xlim = c(-90.192, -90.13), ylim = c(38.585, 38.63), crs = 4326) + 
   theme(
     # axis.text = element_blank(), 
     #  axis.ticks = element_blank()
   ) +
-  scale_size_continuous(name="Log(Concentration)") +
-  scale_alpha_continuous(name="Log(Concentration)") +
-  scale_color_viridis_c(option="inferno", name="Log(Concentration)", direction = -1) +
+  scale_fill_viridis_b(option="inferno", name="Log(Concentration)", direction = -1,
+                       limits = c(-2, 4.1), breaks=c(-2,-1, 0, 1, 2, 3, 4)) +
+  scale_size_continuous(name="Log(Concentration)", 
+                        limits = c(-2, 4.1), breaks=c(-2,-1, 0, 1, 2, 3, 4))+
   theme_void() +
-  guides( colour = guide_legend()) +
-  ggtitle("Gonzalez (2010) Log Transformed Total PCB Sample Concentrations",
-          subtitle = "House Dust Samples")
+  guides(fill = guide_legend("Log(Concentration)"), 
+         color = guide_legend("Log(Concentration)"),
+         size = guide_legend("Log(Concentration)")) +
+  ggtitle("Gonzalez (2010) Log Transformed Total PCB House Dust Sample Concentrations",
+          subtitle = "East St. Louis city boundary (gray outline), former Monsanto plant (blue)")
 ggsave('output/estl-zoomed-in-Gonzalez.jpg', height = 6, width = 10, units = 'in')
 
 
@@ -280,9 +298,9 @@ plot_heat <- function(study, stitle){
     layer_spatial(vmods2$kp[[1]]$log.result.pred, alpha=.75) +
     
     ## Colors
-  #  scale_fill_continuous(type = 'viridis', name = "Log(concentration)") +
-    scale_fill_viridis_c(option = "plasma", direction = -1, name = "Log(concentration)") +
-    
+    scale_fill_viridis_c(option = "plasma", direction = -1, name = "Log(Concentration)") +
+  #  scale_fill_viridis_b(option="inferno", name="Log(Concentration)", direction = -1,
+  #                       limits = c(-2, 4.1), breaks=c(-2,-1, 0, 1, 2, 3, 4)) +
     
     ## Add sample points
     geom_sf(data=totals.study, fill=NA) +
