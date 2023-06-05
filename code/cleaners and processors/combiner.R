@@ -35,7 +35,7 @@ alphax <- alphax %>%
   filter(!str_detect(lab_id, "R") | lab_id=="L2229504-03 RD") %>%
   left_join(alphar) %>%
   mutate(replacement_note = case_when(
-    !is.na(replacement_id) ~ paste0("Analytical results are from sample re-analysis. Original concentration: ",
+    !is.na(replacement_id) ~ paste0("Analytical result is from sample re-analysis, lab ID: ", replacement_id, ". Original concentration: ",
                                 conc, "; Original DL: ", dl,"; Originally detected: ", detected),
     TRUE ~ NA_character_
   ),
@@ -290,5 +290,19 @@ writeVector(sfdf, 'dashboard/data/gis/all-data-for-production-with-geos.shp', ov
 
 writeVector(sfdf_by_parcel, 'data/gis/data-by-parcel.shp', overwrite = T)
 writeVector(sfdf_by_parcel, 'dashboard/data/gis/data-by-parcel.shp', overwrite = T)
+
+## LKT - data for Cindi (based off "P:\26214\Report\data\data-by-sample.csv" and "P:\26214\Report\data\data-by-parcel.csv")
+## Did not see "For Cindi" in codes
+dat_by_sample <- data.frame(sfdf) %>%
+  select(-c(lab_id, sampling_date, est_method, est_conc, replacement_id)) %>%
+  rename(parcel = parcelnumb)
+
+dat_by_parcel <- data.frame(sfdf_by_parcel)%>%
+  select(-c(sampling_date, est_method, est_conc)) %>%
+  rename(parcel = parcelnumb,
+         analyte_pr = analyte_prefix)
+
+write_csv(dat_by_sample, 'data/data-by-sample.csv')
+write_csv(dat_by_parcel, 'data/data-by-parcel.csv')
 
 rm(list=ls())
