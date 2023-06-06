@@ -351,3 +351,4 @@ dat_by_parcel <- data.frame(sfdf_by_parcel)%>%
 
 
 rm(list=ls())
+
