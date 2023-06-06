@@ -16,7 +16,7 @@ alphax <- alpha %>%
         # dl = case_when(!detected ~ conc),  ## LKT removed - dl is present in the updated data
          conc = ifelse(detected, conc, 0), # ND = 0
          est_conc = ifelse(detected, conc, dl/2), # ND = DL/2 
-         est_method = 'Half DL', # For documentation
+         est_method = 'Half RL', # For documentation
          old_analyte = analyte, 
          analyte = str_replace(str_replace(old_analyte, '^.+\\(', ''), '\\)$', ''),
          rl_note = "Alpha RL")
@@ -37,7 +37,7 @@ alphax <- alphax %>%
   left_join(alphar) %>%
   mutate(replacement_note = case_when(
     !is.na(replacement_id) ~ paste0("Analytical result is from sample re-analysis, lab ID: ", replacement_id, ". Original concentration: ",
-                                conc, "; Original DL: ", dl,"; Originally detected: ", detected),
+                                conc, units, "; Original DL: ", dl, units,"; Originally detected: ", detected),
     TRUE ~ NA_character_
   ),
   detected = case_when(!is.na(detected_new) ~ detected_new, TRUE ~ detected),
@@ -107,10 +107,11 @@ capey <- capex |>
          sampling_date = collection_date) %>% 
   mutate(lab = 'Cape Fear', 
          lab_id = as.character(lab_id), 
-         detected = !qualifier %in% c('U', 'CU') | is.na(qualifier),
+        ## Kathleen requested PQL be used for detection not DL (indicated by J flag, including U flag as DL is even lower threshold)
+         detected = !qualifier %in% c('BCJ', 'BJ', 'CJ', 'J', 'U', 'CU') | is.na(qualifier),
          conc = ifelse(detected, conc, 0), # Equivalent to ND = 0
-         est_conc = ifelse(detected, conc, dl/2), # ND = DL/2
-         est_method = 'Half DL',        # For doc purposes 
+         est_conc = ifelse(detected, conc, rl/2), # ND = RL/2 --> updated from DL per talking with Kathleen (DL artificially low) 
+         est_method = 'Half RL',        # For doc purposes 
          rl_note = "Cape Fear PQL") %>% # For doc purposes
   mutate_at(c('dl', 'rl', 'conc', 'est_conc'), ~ .x/1e3) %>%
   mutate(units = 'ug/kg')
@@ -189,45 +190,20 @@ cape_combined <- cape_cong_totals %>%
   arrange(parcel, n_cl, analyte)
 
 # Duplicates were collected in some of the parcels. Take an average. 
-## LKT updating: Kathleen requested to NOT take an average, but instead use
-## the non-duplicate sample conc, rl, etc. 
+## LKT updating: Kathleen requested to include an avg. and the max conc.
 cape_by_parcel <- cape_combined %>% 
   group_by(lab, parcel, units, sampling_date, analyte, n_cl, analyte_prefix, est_method) %>% 
-  mutate(id = row_number())
-
-cape_dups <- cape_by_parcel %>% filter(id != 1) %>% ungroup %>%
-  select(parcel, dup_lab_id = lab_id, dup_location = location, analyte) %>% 
-  distinct() %>%
-  group_by(parcel, analyte) %>% 
-  summarize(dup_lab_id = paste0(unique(dup_lab_id), collapse = ", "), 
-            dup_location = paste0(unique(dup_location), collapse = ", ")
-  )
-
-cape_by_parcel <- cape_by_parcel %>%
-  filter(id == 1) %>%
-  left_join(cape_dups) %>% select(-id) %>%
-  mutate(
-    sample_ids = case_when(
-      !is.na(dup_location) ~ paste(location, dup_location, sep = ", "),
-      TRUE ~ location),
-    lab_ids = case_when(
-      !is.na(dup_lab_id) ~ paste(lab_id, dup_lab_id, sep = ", "),
-      TRUE ~ location)
-  ) %>% 
-  select(-starts_with("dup")) %>%
+  summarize(avg_conc = mean(conc),
+            avg_rl = mean(rl),
+            max_conc = max(conc),
+            max_rl = max(rl),
+            detected = mean(detected),
+            sample_ids = paste0(unique(location), collapse = ', '), 
+            lab_ids = paste0(unique(lab_id), collapse = ', '),
+            qualifiers = paste0(unique(qualifier), collapse = ", ") # list of qualifiers associated with analyte result
+            ) %>%
   arrange(parcel, n_cl, analyte)
 
-# 
-#   summarize(conc = mean(conc), # Average of duplicates
-#             est_conc = mean(est_conc),  # Average of duplicates
-#             detected = mean(detected), 
-#             dl = paste0(unique(dl), collapse = ", "),     # list of detection limits
-#             rl = paste0(unique(rl), collapse = ", "),     # list of reporting limits
-#             qualifier = paste0(unique(qualifier), collapse = ", "), # list of qualifiers associated with analyte result
-#             sample_ids = paste0(unique(location), collapse = ', '), 
-#             lab_ids = paste0(unique(lab_id), collapse = ', ')) %>% 
-#   arrange(parcel, n_cl, analyte)
-  
 cape_by_parcel
 
 # 166 PCBs + 11 totals
@@ -270,50 +246,28 @@ alpha_combined <- alpha_cong_totals %>%
   ungroup() %>% 
   arrange(parcel, n_cl, analyte)
 
-# Duplicates were collected in some of the parcels. Take an average. 
-## LKT updating: Kathleen requested to NOT take an average, but instead use
-## the non-duplicate sample. 
+# Duplicates were collected in some of the parcels.  
+## LKT updating: Kathleen requested to include an avg. and the max conc.
 alpha_by_parcel <- alpha_combined %>% 
   group_by(lab, parcel, units, sampling_date, analyte, n_cl, analyte_prefix, est_method) %>% 
-  mutate(id = row_number())
-
-alpha_dups <- alpha_by_parcel %>% filter(id != 1) %>% ungroup %>%
-  select(parcel, dup_lab_id = lab_id, dup_location = location, analyte) %>% 
-  distinct() %>%
-  group_by(parcel, analyte) %>% 
-  summarize(dup_lab_id = paste0(unique(dup_lab_id), collapse = ", "), 
-            dup_location = paste0(unique(dup_location), collapse = ", ")
-  )
-
-alpha_by_parcel <- alpha_by_parcel %>%
-  filter(id == 1) %>%
-  left_join(alpha_dups) %>% select(-id) %>%
-  mutate(
-    sample_ids = case_when(
-      !is.na(dup_location) ~ paste(location, dup_location, sep = ", "),
-      TRUE ~ location),
-    lab_ids = case_when(
-      !is.na(dup_lab_id) ~ paste(lab_id, dup_lab_id, sep = ", "),
-      TRUE ~ location)
-  ) %>% 
-  select(-starts_with("dup")) %>%
+  summarize(avg_conc = mean(conc),
+            avg_rl = mean(rl),
+            max_conc = max(conc),
+            max_rl = max(rl),
+            detected = mean(detected),
+            sample_ids = paste0(unique(location), collapse = ', '), 
+            lab_ids = paste0(unique(lab_id), collapse = ', '),
+            qualifiers = paste0(unique(qualifier), collapse = ", ") # list of qualifiers associated with analyte result
+            ) %>%
   arrange(parcel, n_cl, analyte)
-  # summarize(conc = mean(conc),         # Average of duplicates
-  #           est_conc = mean(est_conc), # Average of duplicates
-  #           detected = mean(detected),
-  #           dl = paste0(unique(dl), collapse = ", "),     # list of detection limits
-  #           rl = paste0(unique(rl), collapse = ", "),     # list of reporting limits
-  #           qualifier = paste0(unique(qualifier), collapse = ", "), # list of qualifiers associated with analyte result
-  #           sample_ids = paste0(unique(location), collapse = ', '), 
-  #           lab_ids = paste0(unique(lab_id), collapse = ', ')) %>% 
-  # arrange(parcel, n_cl, analyte) 
+
 alpha_by_parcel 
 
 # Data by sample id and not averaged by parcel, i.e., contains duplicates. 
 # This is effectively the raw data provided by the labs but cleaned up, 
 # transformed into long format, and harmonized for consistency between the two labs
 # This data set should be used for production!
-# LKT -- keeping qualifier, rl, dl
+# LKT -- keeping qualifier, rl, rl_note
 data_for_production <- cape_combined |> 
   bind_rows(alpha_combined) |> 
   mutate(parcel = str_pad(parcel, 11, 'left', '0')) |> 
@@ -334,7 +288,9 @@ df_by_parcel <- alpha_by_parcel %>%
   ungroup() %>%
   select(lab, parcel, units, sampling_date,
          analyte, n_cl, analyte_prefix, est_method,
-         conc, est_conc, detected, rl, rl_note, qualifier, sample_ids, lab_ids)
+         avg_conc, avg_rl, max_conc, max_rl, 
+         # conc, est_conc, rl, rl_note
+         detected, qualifiers, sample_ids, lab_ids)
 
 write_csv(data_for_production, 'data/all-data-clean-for-production.csv')
 write_csv(df_by_parcel, 'data/trimmed-data-by-parcel.csv')
@@ -373,15 +329,25 @@ writeVector(sfdf_by_parcel, 'dashboard/data/gis/data-by-parcel.shp', overwrite =
 ## LKT - data for Cindi (based off "P:\26214\Report\data\data-by-sample.csv" and "P:\26214\Report\data\data-by-parcel.csv")
 ## Did not see "For Cindi" in codes, creating output based on columns of above
 dat_by_sample <- data.frame(sfdf) %>%
-  select(-c(lab_id, sampling_date, est_method, est_conc, replacement_id)) %>%
-  rename(parcel = parcelnumb)
+  select(-c(sampling_date, est_method, est_conc, replacement_id)) %>%
+  rename(parcel = parcelnumb) %>%
+  mutate(conc = conc/1000, 
+         units = 'ppm',
+         rl = rl/1000)  %>%
+  write_csv('data/for-cindi/data-by-sample.csv')
 
 dat_by_parcel <- data.frame(sfdf_by_parcel)%>%
-  select(-c(sampling_date, est_method, est_conc)) %>%
+  select(-c(sampling_date, est_method)) %>%
   rename(parcel = parcelnumb,
-         analyte_pr = analyte_prefix)
+         analyte_pr = analyte_prefix) %>%
+  mutate(
+    avg_conc = avg_conc/1000,
+    avg_rl = avg_rl/1000,
+    max_conc = max_conc/1000,
+    max_rl = max_rl/1000,
+    units = 'ppm',
+    ) %>%
+  write_csv('data/for-cindi/data-by-parcel.csv') 
 
-write_csv(dat_by_sample, 'data/data-by-sample.csv')
-write_csv(dat_by_parcel, 'data/data-by-parcel.csv')
 
 rm(list=ls())
