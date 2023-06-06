@@ -37,7 +37,7 @@ alphax <- alphax %>%
   left_join(alphar) %>%
   mutate(replacement_note = case_when(
     !is.na(replacement_id) ~ paste0("Analytical result is from sample re-analysis, lab ID: ", replacement_id, ". Original concentration: ",
-                                conc, "; Original DL: ", dl,"; Originally detected: ", detected),
+                                conc, units, "; Original DL: ", dl, units,"; Originally detected: ", detected),
     TRUE ~ NA_character_
   ),
   detected = case_when(!is.na(detected_new) ~ detected_new, TRUE ~ detected),
@@ -272,7 +272,7 @@ alpha_combined <- alpha_cong_totals %>%
 
 # Duplicates were collected in some of the parcels. Take an average. 
 ## LKT updating: Kathleen requested to NOT take an average, but instead use
-## the non-duplicate sample. 
+## the non-duplicate sample. Still will list duplicate IDs in the sample_ids col.
 alpha_by_parcel <- alpha_combined %>% 
   group_by(lab, parcel, units, sampling_date, analyte, n_cl, analyte_prefix, est_method) %>% 
   mutate(id = row_number())
@@ -374,14 +374,20 @@ writeVector(sfdf_by_parcel, 'dashboard/data/gis/data-by-parcel.shp', overwrite =
 ## Did not see "For Cindi" in codes, creating output based on columns of above
 dat_by_sample <- data.frame(sfdf) %>%
   select(-c(lab_id, sampling_date, est_method, est_conc, replacement_id)) %>%
-  rename(parcel = parcelnumb)
+  rename(parcel = parcelnumb) %>%
+  mutate(conc = conc/1000, 
+         units = 'ppm',
+         rl = rl/1000)  %>%
+  write_csv('data/for-cindi/data-by-sample.csv')
 
 dat_by_parcel <- data.frame(sfdf_by_parcel)%>%
   select(-c(sampling_date, est_method, est_conc)) %>%
   rename(parcel = parcelnumb,
-         analyte_pr = analyte_prefix)
+         analyte_pr = analyte_prefix) %>%
+  mutate(conc = conc/1000, 
+         units = 'ppm',
+         rl = rl/1000) %>%
+  write_csv('data/for-cindi/data-by-parcel.csv') 
 
-write_csv(dat_by_sample, 'data/data-by-sample.csv')
-write_csv(dat_by_parcel, 'data/data-by-parcel.csv')
 
 rm(list=ls())
