@@ -93,16 +93,22 @@ plot(kp$result.pred)
 # Remove section of heatmap outside East St Louis
 kp_esl = terra::mask(kp, esl) 
 
+# Export heatmpa polygons to shapefile for use in tableau
+test <- as.polygons(kp_esl$result.pred, dissolve=FALSE)
+plot(test)
+writeVector(test, 'output/heat-base-raster.shp',overwrite=TRUE)
+
+
 # Remove Study Points Outside East St Louis
 study_totals = st_intersection(study_totals, esl)
 
-
+## PLOT
 basemap <- ggplot() +
   # base map
   annotation_map_tile(type = 'cartolight', zoom = 15) +
   
   # heat map -- parcels
-  layer_spatial(kp_esl$result.pred, alpha=.75) +
+  layer_spatial(kp_esl$result.pred, alpha=.85) +
   
   # outlines of E St Louis, Monsanto
   geom_sf(data = esl, fill = NA, color = 'gray', linewidth = .75) + 
@@ -115,8 +121,7 @@ basemap <- ggplot() +
                                    "#611F53FF", "#30173AFF"),
                        name =  "PCB Log Concentrations (ppm)",
                        na.value = 'transparent')+
-  scale_size_continuous(name = "PCB Log Concentrations (ppm)")
-
+  scale_size_continuous(name = "PCB Log Concentrations (ppm)") 
 
 ## Gonzalez
 totals.gz <- study_totals %>% filter(str_detect(Study, "Gonzalez"))
