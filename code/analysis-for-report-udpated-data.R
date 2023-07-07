@@ -413,6 +413,7 @@ ggsave('output/num-parcels-by-bin.png', height = 6, width = 8, units = 'in')
 
 #### Tables ----
 
+
 # Using avgs -- ASSUMING we want to look at detected values, not ND. Previous table in report seemed to match this assumption.
 summ_stats <- totals |> 
   filter(detected>0) %>%
