@@ -13,7 +13,7 @@ alphax <- alpha %>%
          sample_matrix = sample_type) %>% 
   mutate(lab = 'Alpha', 
          sampling_date = lubridate::mdy(sampling_date), 
-        # dl = case_when(!detected ~ conc),  ## LKT removed - dl is present in the updated data
+         # dl = case_when(!detected ~ conc),  ## LKT removed - dl is present in the updated data
          conc = ifelse(detected, conc, 0), # ND = 0
          est_conc = ifelse(detected, conc, dl/2), # ND = DL/2 
          est_method = 'Half RL', # For documentation
@@ -37,7 +37,7 @@ alphax <- alphax %>%
   left_join(alphar) %>%
   mutate(replacement_note = case_when(
     !is.na(replacement_id) ~ paste0("Analytical result is from sample re-analysis, lab ID: ", replacement_id, ". Original concentration: ",
-                                conc, units, "; Original DL: ", dl, units,"; Originally detected: ", detected),
+                                    conc, units, "; Original DL: ", dl, units,"; Originally detected: ", detected),
     TRUE ~ NA_character_
   ),
   detected = case_when(!is.na(detected_new) ~ detected_new, TRUE ~ detected),
@@ -107,7 +107,7 @@ capey <- capex |>
          sampling_date = collection_date) %>% 
   mutate(lab = 'Cape Fear', 
          lab_id = as.character(lab_id), 
-        ## Kathleen requested PQL be used for detection not DL (indicated by J flag, including U flag as DL is even lower threshold)
+         ## Kathleen requested PQL be used for detection not DL (indicated by J flag, including U flag as DL is even lower threshold)
          detected = !qualifier %in% c('BCJ', 'BJ', 'CJ', 'J', 'U', 'CU') | is.na(qualifier),
          conc = ifelse(detected, conc, 0), # Equivalent to ND = 0
          est_conc = ifelse(detected, conc, rl/2), # ND = RL/2 --> updated from DL per talking with Kathleen (DL artificially low) 
@@ -201,7 +201,7 @@ cape_by_parcel <- cape_combined %>%
             sample_ids = paste0(unique(location), collapse = ', '), 
             lab_ids = paste0(unique(lab_id), collapse = ', '),
             qualifiers = paste0(unique(qualifier), collapse = ", ") # list of qualifiers associated with analyte result
-            ) %>%
+  ) %>%
   arrange(parcel, n_cl, analyte)
 
 cape_by_parcel
@@ -258,7 +258,7 @@ alpha_by_parcel <- alpha_combined %>%
             sample_ids = paste0(unique(location), collapse = ', '), 
             lab_ids = paste0(unique(lab_id), collapse = ', '),
             qualifiers = paste0(unique(qualifier), collapse = ", ") # list of qualifiers associated with analyte result
-            ) %>%
+  ) %>%
   arrange(parcel, n_cl, analyte)
 
 alpha_by_parcel 
@@ -301,11 +301,22 @@ gc()
 library(terra)
 
 data_for_production <- read_csv('data/all-data-clean-for-production.csv')
-df_by_parcel <- read_csv('data/trimmed-data-by-parcel.csv') 
+df_by_parcel <- read_csv('data/trimmed-data-by-parcel.csv')
+names(df_by_parcel)
+df_by_parcel <- df_by_parcel %>% filter(analyte == "Total PCBs")
 geos <- sf::st_read('data/gis/il_st_clair.shp') %>% 
   select(geoid, parcelnumb, city, county, lat, lon, area_sqft = ll_gissqft, area_acre = ll_gisacre) %>%
   filter(city == 'east-st-louis') %>% 
-  group_by(parcelnumb) %>% 
+  group_by(parcelnumb) 
+
+test <- as.data.frame(geos) %>% group_by(parcelnumb) %>% summarize(n=n()) %>% filter(n >1)
+
+## For some reason there are two parcels with the same number.
+## LKT - 8/8/23 meeting: for parcel 01230205012 we need to use the one with the larger acreage (0.9 vs ~0.05) for correct GIS coords
+##       Also need to remove PAR-12 as this was determined to be private parcel 01230206011
+geos <- geos %>% 
+  filter( parcelnumb != '01230205012' | (parcelnumb == '01230205012' & area_acre >0.5) ) %>%
+  filter( parcelnumb != '01230206011') %>%
   slice(1) # for some reason there are duplicates in the shape file
 
 sfdf <- terra::merge(terra::vect(geos), data_for_production, all.x = F, by.x = 'parcelnumb', by.y = 'parcel', how = 'inner')
@@ -319,6 +330,7 @@ df_by_parcel %>%
 # two parcels 00000000ROW and RIGHT OF WAY are not actual parcels
 # therefore, no geocodes associated with them. 
 # apparently, these were collected on the boundary near Monsanto Way. 
+#  Also removed PAR-12 as this was determined to be private parcel 01230206011 in 8/8/23 meeting
 
 writeVector(sfdf, 'data/gis/all-data-for-production-with-geos.shp', overwrite = T)
 writeVector(sfdf, 'dashboard/data/gis/all-data-for-production-with-geos.shp', overwrite = T)
@@ -326,8 +338,10 @@ writeVector(sfdf, 'dashboard/data/gis/all-data-for-production-with-geos.shp', ov
 writeVector(sfdf_by_parcel, 'data/gis/data-by-parcel.shp', overwrite = T)
 writeVector(sfdf_by_parcel, 'dashboard/data/gis/data-by-parcel.shp', overwrite = T)
 
-## LKT - data for Cindi (based off "P:\26214\Report\data\data-by-sample.csv" and "P:\26214\Report\data\data-by-parcel.csv")
-## Did not see "For Cindi" in codes, creating output based on columns of above
+
+
+## LKT - data for Cindee (based off "P:\26214\Report\data\data-by-sample.csv" and "P:\26214\Report\data\data-by-parcel.csv")
+## Did not see "For Cindee" in codes, creating output based on columns of above
 dat_by_sample <- data.frame(sfdf) %>%
   select(-c(sampling_date, est_method, est_conc, replacement_id)) %>%
   rename(parcel = parcelnumb) %>%
@@ -346,7 +360,7 @@ dat_by_parcel <- data.frame(sfdf_by_parcel)%>%
     max_conc = max_conc/1000,
     max_rl = max_rl/1000,
     units = 'ppm',
-    ) %>%
+  ) %>%
   write_csv('data/for-cindi/data-by-parcel.csv') 
 
 
