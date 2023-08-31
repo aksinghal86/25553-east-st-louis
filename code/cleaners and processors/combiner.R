@@ -305,7 +305,8 @@ df_by_parcel <- read_csv('data/trimmed-data-by-parcel.csv')
 names(df_by_parcel)
 df_by_parcel <- df_by_parcel %>% filter(analyte == "Total PCBs")
 geos <- sf::st_read('data/gis/il_st_clair.shp') %>% 
-  select(geoid, parcelnumb, city, county, lat, lon, area_sqft = ll_gissqft, area_acre = ll_gisacre) %>%
+  select(geoid, parcelnumb, city, county, lat, lon, area_sqft = ll_gissqft, area_acre = ll_gisacre,
+         address, zipcode = szip) %>%
   filter(city == 'east-st-louis') %>% 
   group_by(parcelnumb) 
 
@@ -347,7 +348,9 @@ dat_by_sample <- data.frame(sfdf) %>%
   rename(parcel = parcelnumb) %>%
   mutate(conc = conc/1000, 
          units = 'ppm',
-         rl = rl/1000)  %>%
+         rl = rl/1000,
+         parcel = paste0("=\"", parcel,"\"")
+         )  %>%
   write_csv('data/for-cindi/data-by-sample.csv')
 
 dat_by_parcel <- data.frame(sfdf_by_parcel)%>%
@@ -360,6 +363,13 @@ dat_by_parcel <- data.frame(sfdf_by_parcel)%>%
     max_conc = max_conc/1000,
     max_rl = max_rl/1000,
     units = 'ppm',
+    max_conc_bin = case_when(
+      max_conc >= 1 ~ ">= 1.0",
+      max_conc < 1 & max_conc >= 0.25 ~ ">= 0.25 to <1.0",
+      max_conc < 0.25 & max_conc > 0.034 ~ "> 0.034 to < 0.25",
+      max_conc <= 0.034 ~ "<= 0.034"
+    ),
+    parcel = paste0("=\"", parcel,"\"")
   ) %>%
   write_csv('data/for-cindi/data-by-parcel.csv') 
 
