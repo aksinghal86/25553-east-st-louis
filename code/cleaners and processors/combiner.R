@@ -305,7 +305,8 @@ df_by_parcel <- read_csv('data/trimmed-data-by-parcel.csv')
 names(df_by_parcel)
 df_by_parcel <- df_by_parcel %>% filter(analyte == "Total PCBs")
 geos <- sf::st_read('data/gis/il_st_clair.shp') %>% 
-  select(geoid, parcelnumb, city, county, lat, lon, area_sqft = ll_gissqft, area_acre = ll_gisacre,
+  # 11/14/23 - Kathleen requested owner be added 
+  select(geoid, parcelnumb, owner, city, county, lat, lon, area_sqft = ll_gissqft, area_acre = ll_gisacre,
          address, zipcode = szip) %>%
   filter(city == 'east-st-louis') %>% 
   group_by(parcelnumb) 
