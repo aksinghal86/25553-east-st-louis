@@ -11,7 +11,9 @@ pcb_nonaro<- c(
   "PCB-100", "PCB-104", "PCB-106", "PCB-108", "PCB-11", "PCB-111", "PCB-116", "PCB-120", "PCB-121", "PCB-107",
   "PCB-112", "PCB-127", "PCB-162", "PCB-14", "PCB-140", "PCB-142", "PCB-143", "PCB-145", "PCB-148", "PCB-150",
   "PCB-152", "PCB-155", "PCB-159", "PCB-160", "PCB-161", "PCB-165", "PCB-168", "PCB-169", "PCB-182", "PCB-184",
-  "PCB-186", "PCB-188", "PCB-192", "PCB-204", "PCB-209", "PCB-21", "PCB-36", "PCB-38", "PCB-39", "PCB-68", "PCB-65",
+  "PCB-186", "PCB-188", "PCB-192", "PCB-204",
+  "PCB-209", 
+  "PCB-21", "PCB-36", "PCB-38", "PCB-39", "PCB-68", "PCB-65",
   "PCB-62", "PCB-61", "PCB-58", "PCB-78", "PCB-79", "PCB-80", "PCB-90", "PCB-98"
 )
 
@@ -60,7 +62,27 @@ dat2_reg_nonaro_tot2 <- dat2_reg_nonaro_tot %>%
            area_acre, address, zipcode, lab, location, lab_id, units) %>%
   summarize(homolog = "Total",
             conc = sum(conc),
-            analyte = "Total non-aroclor PCBs",
+            analyte = "Total non-aroclor PCBs ",
+            nonaroclor_flag = 1) %>%
+  distinct()
+
+dat2_reg_nonaro_tot_209 <- dat2_reg_nonaro %>%
+  filter(analyte != "PCB-209") %>%
+  ungroup() %>%
+  group_by(parcel, geoid, owner, city, county, lat, lon, area_sqft,
+           area_acre, address, zipcode, lab, location, lab_id, units, n_cl, homolog) %>%
+  summarize(conc = sum(conc),
+            analyte = paste0("Total non-aroclor (-209) ", homolog),
+            nonaroclor_flag = 1) %>%
+  distinct()
+
+dat2_reg_nonaro_tot2_209 <- dat2_reg_nonaro_tot209 %>%
+  ungroup() %>%
+  group_by(parcel, geoid, owner, city, county, lat, lon, area_sqft,
+           area_acre, address, zipcode, lab, location, lab_id, units) %>%
+  summarize(homolog = "Total",
+            conc = sum(conc),
+            analyte = "Total non-aroclor PCBs (-209)",
             nonaroclor_flag = 1) %>%
   distinct()
 
@@ -84,17 +106,43 @@ dat2_reg_aro_tot2 <- dat2_reg_aro_tot %>%
             nonaroclor_flag = 0) %>%
   distinct()
 
+dat2_reg_aro_tot_209 <- dat2_reg %>%
+  filter(nonaroclor_flag != 1 | analyte == "PCB-209") %>%
+  ungroup() %>%
+  group_by(parcel, geoid, owner, city, county, lat, lon, area_sqft,
+           area_acre, address, zipcode, lab, location, lab_id, units, n_cl, homolog) %>%
+  summarize(conc = sum(conc),
+            analyte = paste0("Total aroclor (+209) ", homolog),
+            nonaroclor_flag = 0) %>%
+  distinct()
+
+dat2_reg_aro_tot2_209 <- dat2_reg %>%
+  filter(nonaroclor_flag != 1 | analyte == "PCB-209") %>%
+  ungroup() %>%
+  group_by(parcel, geoid, owner, city, county, lat, lon, area_sqft,
+           area_acre, address, zipcode, lab, location, lab_id, units) %>%
+  summarize(homolog = "Total",
+            conc = sum(conc),
+            analyte = "Total aroclor PCBs (+209) ",
+            nonaroclor_flag = 0) %>%
+  distinct()
+
 # Combine all --
 dat3 <- dat2 %>%
   bind_rows(dat2_reg_aro_tot) %>%
   bind_rows(dat2_reg_aro_tot2) %>%
+  bind_rows(dat2_reg_aro_tot_209) %>%
+  bind_rows(dat2_reg_aro_tot2_209) %>%
   bind_rows(dat2_reg_nonaro_tot) %>%
   bind_rows(dat2_reg_nonaro_tot2) %>%
+  bind_rows(dat2_reg_nonaro_tot_209) %>%
+  bind_rows(dat2_reg_nonaro_tot2_209) %>%
   arrange(parcel, homolog, analyte)
 
 
 write.csv(dat3, "C:\\Users\\ltravis\\EH&E Dropbox\\Laura Travis\\GitProjects\\25553-east-st-louis\\data\\for-cindi\\data-by-sample_aroclor.csv")
 
+write.csv(dat3 %>% filter(homolog=="Total"), "C:\\Users\\ltravis\\EH&E Dropbox\\Laura Travis\\GitProjects\\25553-east-st-louis\\data\\for-cindi\\data-by-sample_aroclor_totals.csv")
 
 
 
