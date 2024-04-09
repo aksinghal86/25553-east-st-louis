@@ -2,6 +2,21 @@ library(tidyverse)
 
 alpha <- read_csv('data/updated-alpha.csv') 
 cape <- read_csv('data/cape-fear.csv')
+aqa <- readxl::read_xlsx('P:/25553/Lab Data Coordination/Lab Reports/Sampling Trip Report 2015 Data.xlsx')
+
+# Basic formatting and standardization 
+aqax <- aqa %>%
+  mutate(## Kathleen requested PQL be used for detection not DL (indicated by J flag, including U flag as DL is even lower threshold)
+         detected = !qualifier %in% c('BCJ', 'BJ', 'CJ', 'J', 'U', 'CU') | is.na(qualifier),
+         rl = case_when(!detected ~ conc),
+         conc = ifelse(detected, conc, 0), # Equivalent to ND = 0
+         est_conc = ifelse(detected, conc, rl/2), # ND = DL/2
+         est_method = 'Half RL',        # For doc purposes 
+         rl_note = "AQA Lab RL"
+         ) %>%
+  rename(parcel = `Parcel Guess`,
+         analyte_prefix = homolog)
+
 
 # Basic formatting and standardization
 # ND = 0 for conc; and ND = DL/2 for 'est_conc'
@@ -120,7 +135,8 @@ capey |> filter(!str_detect(analyte, 'Total')) |> group_by(location) |> count()
 
 df <- alphax %>% 
   bind_rows(capey) %>% 
-  mutate(parcel = str_pad(parcel, 11, 'left', '0'))
+  mutate(parcel = str_pad(parcel, 11, 'left', '0')) %>%
+  bind_rows(aqax)
 
 ## Kathleen requested only keeping RL column, dropping DL for Cape Fear. 
 ## The low Cape Fear DL is likely artificially made. I've created a new column
@@ -263,6 +279,19 @@ alpha_by_parcel <- alpha_combined %>%
 
 alpha_by_parcel 
 
+aqax_by_parcel <- aqax %>% 
+  group_by(lab, parcel, units, sampling_date, analyte, analyte_prefix, est_method) %>% 
+  summarize(avg_conc = mean(conc),
+            avg_rl = mean(rl),
+            max_conc = max(conc),
+            max_rl = max(rl),
+            detected = mean(detected),
+            sample_ids = paste0(unique(location), collapse = ', '), 
+          #  lab_ids = paste0(unique(lab_id), collapse = ', '),
+            qualifiers = paste0(unique(qualifier), collapse = ", ") # list of qualifiers associated with analyte result
+  ) %>%
+  arrange(parcel, analyte)
+
 # Data by sample id and not averaged by parcel, i.e., contains duplicates. 
 # This is effectively the raw data provided by the labs but cleaned up, 
 # transformed into long format, and harmonized for consistency between the two labs
@@ -271,6 +300,7 @@ alpha_by_parcel
 data_for_production <- cape_combined |> 
   bind_rows(alpha_combined) |> 
   mutate(parcel = str_pad(parcel, 11, 'left', '0')) |> 
+  bind_rows(aqax) |>
   arrange(parcel, analyte_prefix, analyte) |> 
   select(-analyte_group, -sample_matrix, -sheet, -old_analyte, -dl) |> ## LKT update - only keeping rl with note per Kathleen's request 
   select(lab:rl, rl_note, everything()) |>
@@ -285,6 +315,7 @@ unique(test$analyte)
 df_by_parcel <- alpha_by_parcel %>% 
   bind_rows(cape_by_parcel) %>% 
   mutate(parcel = str_pad(parcel, 11, 'left', '0')) %>% 
+  bind_rows(aqax_by_parcel) %>%
   ungroup() %>%
   select(lab, parcel, units, sampling_date,
          analyte, n_cl, analyte_prefix, est_method,
