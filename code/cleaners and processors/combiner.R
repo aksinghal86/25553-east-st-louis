@@ -6,7 +6,7 @@ aqa <- readxl::read_xlsx('P:/25553/Lab Data Coordination/Lab Reports/Sampling Tr
 
 # Basic formatting and standardization 
 aqax <- aqa %>%
-  mutate(## Kathleen requested PQL be used for detection not DL (indicated by J flag, including U flag as DL is even lower threshold)
+  mutate(## PQL used for detection not DL (indicated by J flag, including U flag as DL is even lower threshold)
          detected = !qualifier %in% c('BCJ', 'BJ', 'CJ', 'J', 'U', 'CU') | is.na(qualifier),
          rl = case_when(!detected ~ conc),
          conc = ifelse(detected, conc, 0), # Equivalent to ND = 0
@@ -59,7 +59,7 @@ alphax <- alphax %>%
   conc = case_when(!is.na(conc_new) ~ conc_new, TRUE ~ conc),
   est_conc = case_when(!is.na(est_conc_new) ~ est_conc_new, TRUE ~ est_conc),
   dl   = case_when(!is.na(dl_new) ~ dl_new, TRUE ~ dl),
-  ## Kathleen requested one column (RL) instead of DL and RL
+  
   rl = dl,
   ) %>%
   select(-conc_new, -dl_new, -detected_new, -est_conc_new)
@@ -122,10 +122,10 @@ capey <- capex |>
          sampling_date = collection_date) %>% 
   mutate(lab = 'Cape Fear', 
          lab_id = as.character(lab_id), 
-         ## Kathleen requested PQL be used for detection not DL (indicated by J flag, including U flag as DL is even lower threshold)
+         ## PQL used for detection not DL (indicated by J flag, including U flag as DL is even lower threshold)
          detected = !qualifier %in% c('BCJ', 'BJ', 'CJ', 'J', 'U', 'CU') | is.na(qualifier),
          conc = ifelse(detected, conc, 0), # Equivalent to ND = 0
-         est_conc = ifelse(detected, conc, rl/2), # ND = RL/2 --> updated from DL per talking with Kathleen (DL artificially low) 
+         est_conc = ifelse(detected, conc, rl/2), # ND = RL/2
          est_method = 'Half RL',        # For doc purposes 
          rl_note = "Cape Fear PQL") %>% # For doc purposes
   mutate_at(c('dl', 'rl', 'conc', 'est_conc'), ~ .x/1e3) %>%
@@ -138,9 +138,8 @@ df <- alphax %>%
   mutate(parcel = str_pad(parcel, 11, 'left', '0')) %>%
   bind_rows(aqax)
 
-## Kathleen requested only keeping RL column, dropping DL for Cape Fear. 
-## The low Cape Fear DL is likely artificially made. I've created a new column
-## "rl_note" that signifies which value was used for each lab
+## Only keeping RL column, dropping DL for Cape Fear. 
+## new column "rl_note" signifies which value was used for each lab
 df <- df %>%
   mutate(rl = case_when(
     lab == "Alpha" ~ dl,
@@ -155,11 +154,11 @@ df %>% filter(is.na(rl_note))
 # Level 1 clean, i.e., contains total homolog estimates by Cape Fear and 
 # not harmonized between labs, e.g., co-eluters are reported separately by Cape Fear. 
 # 'est_conc' contains estimates by half of DL. 'conc' contains the raw number provided by lab. 
-# NOTE: this database is just for QC purposes. DO NOT USE. Use the production data below. 
+# NOTE: draft database for QC. DO NOT USE. 
 write_csv(df, 'data/all-data.csv')
 
 
-# Assign congener groups and calculate my own totals rather than those 
+# Assign congener groups and calculate totals rather than those 
 # provided by Cape Fear. Also calculate Total PCBs. 
 # Labs use 0 for NDs, which is not appropriate. 
 
@@ -181,7 +180,7 @@ cape2 <- capey %>%
   left_join(prefixes, by = 'abbr') %>% 
   select(-abbr)
 
-## Calculate my own totals
+## Calculate totals
 # by homolog 
 cape_cong_totals <- cape2 %>% 
   group_by(lab, parcel, location, lab_id, units, sampling_date, analyte_group, n_cl, analyte_prefix, est_method) %>% 
@@ -205,8 +204,7 @@ cape_combined <- cape_cong_totals %>%
   ungroup() %>% 
   arrange(parcel, n_cl, analyte)
 
-# Duplicates were collected in some of the parcels. Take an average. 
-## LKT updating: Kathleen requested to include an avg. and the max conc.
+# Duplicates were collected in some of the parcels. Take an average and the max
 cape_by_parcel <- cape_combined %>% 
   group_by(lab, parcel, units, sampling_date, analyte, n_cl, analyte_prefix, est_method) %>% 
   summarize(avg_conc = mean(conc),
@@ -239,7 +237,7 @@ alpha2 <- alphax %>%
   left_join(prefixes, by = 'abbr') %>% 
   select(-abbr) 
 
-# Calculate my own totals
+# Calculate totals
 alpha_cong_totals <- alpha2 %>% 
   group_by(lab, parcel, location, lab_id, units, sampling_date, analyte_group, n_cl, analyte_prefix, est_method) %>% 
   summarize(conc = sum(conc),
@@ -262,8 +260,7 @@ alpha_combined <- alpha_cong_totals %>%
   ungroup() %>% 
   arrange(parcel, n_cl, analyte)
 
-# Duplicates were collected in some of the parcels.  
-## LKT updating: Kathleen requested to include an avg. and the max conc.
+# Duplicates were collected in some of the parcels. calculate avg and max conc
 alpha_by_parcel <- alpha_combined %>% 
   group_by(lab, parcel, units, sampling_date, analyte, n_cl, analyte_prefix, est_method) %>% 
   summarize(avg_conc = mean(conc),
@@ -295,14 +292,14 @@ aqax_by_parcel <- aqax %>%
 # Data by sample id and not averaged by parcel, i.e., contains duplicates. 
 # This is effectively the raw data provided by the labs but cleaned up, 
 # transformed into long format, and harmonized for consistency between the two labs
-# This data set should be used for production!
-# LKT -- keeping qualifier, rl, rl_note
+# final dataset.
+# keep qualifier, rl, rl_note
 data_for_production <- cape_combined |> 
   bind_rows(alpha_combined) |> 
   mutate(parcel = str_pad(parcel, 11, 'left', '0')) |> 
   bind_rows(aqax) |>
   arrange(parcel, analyte_prefix, analyte) |> 
-  select(-analyte_group, -sample_matrix, -sheet, -old_analyte, -dl) |> ## LKT update - only keeping rl with note per Kathleen's request 
+  select(-analyte_group, -sample_matrix, -sheet, -old_analyte, -dl) |> 
   select(lab:rl, rl_note, everything()) |>
   rename(homolog = analyte_prefix)
 
@@ -336,7 +333,7 @@ df_by_parcel <- read_csv('data/trimmed-data-by-parcel.csv')
 names(df_by_parcel)
 df_by_parcel <- df_by_parcel %>% filter(analyte == "Total PCBs")
 geos <- sf::st_read('data/gis/il_st_clair.shp') %>% 
-  # 11/14/23 - Kathleen requested owner be added 
+  # select the relevant columns 
   select(geoid, parcelnumb, owner, city, county, lat, lon, area_sqft = ll_gissqft, area_acre = ll_gisacre,
          address, zipcode = szip) %>%
   filter(city == 'east-st-louis') %>% 
@@ -344,13 +341,13 @@ geos <- sf::st_read('data/gis/il_st_clair.shp') %>%
 
 test <- as.data.frame(geos) %>% group_by(parcelnumb) %>% summarize(n=n()) %>% filter(n >1)
 
-## For some reason there are two parcels with the same number.
-## LKT - 8/8/23 meeting: for parcel 01230205012 we need to use the one with the larger acreage (0.9 vs ~0.05) for correct GIS coords
-##       Also need to remove PAR-12 as this was determined to be private parcel 01230206011
+## Two parcels with the same number.
+## Parcel 01230205012 is the one with the larger acreage (0.9 vs ~0.05) based on correct GIS coords
+## Remove PAR-12 as this was determined to be private parcel 01230206011
 geos <- geos %>% 
   filter( parcelnumb != '01230205012' | (parcelnumb == '01230205012' & area_acre >0.5) ) %>%
   filter( parcelnumb != '01230206011') %>%
-  slice(1) # for some reason there are duplicates in the shape file
+  slice(1) # remove duplicates
 
 sfdf <- terra::merge(terra::vect(geos), data_for_production, all.x = F, by.x = 'parcelnumb', by.y = 'parcel', how = 'inner')
 sfdf_by_parcel <- terra::merge(terra::vect(geos), df_by_parcel, all.x = F, by.x = 'parcelnumb', by.y = 'parcel', how = 'inner') 
@@ -360,10 +357,6 @@ df_by_parcel %>% distinct(parcel) %>% count
 df_by_parcel %>% 
   filter(!df_by_parcel$parcel %in% unique(sfdf$parcelnumb)) %>% 
   distinct(parcel)
-# two parcels 00000000ROW and RIGHT OF WAY are not actual parcels
-# therefore, no geocodes associated with them. 
-# apparently, these were collected on the boundary near Monsanto Way. 
-#  Also removed PAR-12 as this was determined to be private parcel 01230206011 in 8/8/23 meeting
 
 writeVector(sfdf, 'data/gis/all-data-for-production-with-geos.shp', overwrite = T)
 writeVector(sfdf, 'dashboard/data/gis/all-data-for-production-with-geos.shp', overwrite = T)
@@ -371,10 +364,7 @@ writeVector(sfdf, 'dashboard/data/gis/all-data-for-production-with-geos.shp', ov
 writeVector(sfdf_by_parcel, 'data/gis/data-by-parcel.shp', overwrite = T)
 writeVector(sfdf_by_parcel, 'dashboard/data/gis/data-by-parcel.shp', overwrite = T)
 
-
-
-## LKT - data for Cindee (based off "P:\26214\Report\data\data-by-sample.csv" and "P:\26214\Report\data\data-by-parcel.csv")
-## Did not see "For Cindee" in codes, creating output based on columns of above
+## data for review of parcel sampling locations
 dat_by_sample <- data.frame(sfdf) %>%
   select(-c(sampling_date, est_method, est_conc, replacement_id)) %>%
   rename(parcel = parcelnumb) %>%
